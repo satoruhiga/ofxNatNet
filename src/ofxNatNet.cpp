@@ -73,14 +73,14 @@ struct ofxNatNet::InternalThread : public ofThread
 	
 	float scale;
 
-	InternalThread(string network_interface_name, string multicast_group, int command_port, int data_port) : connected(false), command_port(command_port), frame_number(0), latency(0), scale(1), buffer_size(0)
+	InternalThread(string network_interface_ip, string multicast_group, int command_port, int data_port) : connected(false), command_port(command_port), frame_number(0), latency(0), scale(1), buffer_size(0), last_packet_received(0), data_rate(0)
 	{
 		network_interfce = Poco::Net::NetworkInterface::forIndex(0);
 
-		if (network_interface_name != "")
+		if (network_interface_ip != "")
 		{
 			try {
-				network_interfce = Poco::Net::NetworkInterface::forName(network_interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
+				network_interfce = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(network_interface_ip));
 			} catch (exception &e) {
 				ofLogError("ofxNatNet") << e.what();
 			}
@@ -676,10 +676,10 @@ struct ofxNatNet::InternalThread : public ofThread
 	}
 };
 
-void ofxNatNet::setup(string network_interface_name, string multicast_group, int command_port, int data_port)
+void ofxNatNet::setup(string network_interface_ip, string multicast_group, int command_port, int data_port)
 {
 	dispose();
-	thread = new InternalThread(network_interface_name, multicast_group, command_port, data_port);
+	thread = new InternalThread(network_interface_ip, multicast_group, command_port, data_port);
 }
 
 void ofxNatNet::dispose()
