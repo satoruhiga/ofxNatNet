@@ -14,6 +14,7 @@ void testApp::setup()
 	
 	// natnet.setup(); // setup with default network device
 	natnet.setup("en2"); // setup with network device name
+	natnet.setScale(100);
 }
 
 //--------------------------------------------------------------
@@ -29,15 +30,37 @@ void testApp::draw()
 	
 	ofDrawAxis(100);
 	
+	ofNoFill();
+	
+	ofSetColor(255, 0, 0);
 	for (int i = 0; i < natnet.getNumMarker(); i++)
 	{
-		ofBox(natnet.getMarker(i) * 100, 10);
+		ofBox(natnet.getMarker(i), 10);
 	}
+	
+	for (int i = 0; i < natnet.getNumRigidBody(); i++)
+	{
+		const ofxNatNet::RigidBody &RB = natnet.getRigidBody(i);
+		
+		ofPushMatrix();
+		glMultMatrixf(RB.getMatrix().getPtr());
+		ofDrawAxis(30);
+		ofPopMatrix();
+		
+		ofSetColor(0, 255, 0);
+		
+		for (int n = 0; n < RB.markers.size(); n++)
+		{
+			ofBox(RB.markers[n], 5);
+		}
+	}
+
 	
 	cam.end();
 	
 	string str;
 	str += "frames: " + ofToString(natnet.getFrameNumber()) + "\n";
+	str += "data rate: " + ofToString(natnet.getDataRate()) + "\n";
 	str += string("connected: ") + (natnet.isConnected() ? "YES" : "NO") + "\n";
 	str += "num marker: " + ofToString(natnet.getNumMarker()) + "\n";
 	str += "num markerset: " + ofToString(natnet.getNumMarkerSet()) + "\n";

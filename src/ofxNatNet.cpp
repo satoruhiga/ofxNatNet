@@ -381,10 +381,12 @@ struct ofxNatNet::InternalThread : public ofThread
 					nBytes = nRigidMarkers * sizeof(float);
 					ptr += nBytes;
 				}
-
+				
 				for (int k = 0; k < nRigidMarkers; k++)
 				{
-					RB.markers[k].set(markerData[k * 3], markerData[k * 3 + 1], markerData[k * 3 + 2]);
+					RB.markers[k].set(markerData[k * 3] * scale,
+									  markerData[k * 3 + 1] * scale,
+									  markerData[k * 3 + 2] * scale);
 				}
 
 				if (markerData)
