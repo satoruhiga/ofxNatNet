@@ -12,8 +12,7 @@ void testApp::setup()
 	ofSetVerticalSync(true);
 	ofBackground(0);
 
-	natnet.setup(); // setup with default network device
-	// natnet.setup("192.168.1.10"); // setup with network device ip
+	natnet.setup("192.168.0.10");
 	natnet.setScale(100);
 }
 

@@ -47,8 +47,7 @@ typedef struct
 struct ofxNatNet::InternalThread : public ofThread
 {
 	bool connected;
-
-	Poco::Net::NetworkInterface network_interfce;
+	string target_host;
 
 	int command_port;
 
@@ -73,25 +72,14 @@ struct ofxNatNet::InternalThread : public ofThread
 	
 	float scale;
 
-	InternalThread(string network_interface_ip, string multicast_group, int command_port, int data_port) : connected(false), command_port(command_port), frame_number(0), latency(0), scale(1), buffer_size(0), last_packet_received(0), data_rate(0)
+	InternalThread(string target_host, string multicast_group, int command_port, int data_port) : connected(false), target_host(target_host), command_port(command_port), frame_number(0), latency(0), scale(1), buffer_size(0), last_packet_received(0), data_rate(0)
 	{
-		network_interfce = Poco::Net::NetworkInterface::forIndex(0);
-
-		if (network_interface_ip != "")
-		{
-			try {
-				network_interfce = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(network_interface_ip));
-			} catch (exception &e) {
-				ofLogError("ofxNatNet") << e.what();
-			}
-		}
-
 		{
 			Poco::Net::IPAddress ip(multicast_group);
 
 			Poco::Net::SocketAddress addr(Poco::Net::IPAddress(ip.family()), data_port);
 			data_socket.bind(addr, true);
-			data_socket.joinGroup(ip, network_interfce);
+			data_socket.joinGroup(ip);
 
 			data_socket.setBlocking(false);
 			
@@ -111,9 +99,15 @@ struct ofxNatNet::InternalThread : public ofThread
 			assert(command_socket.getSendBufferSize() == 0x100000);
 		}
 		
+		for (int i = 0; i < 4; i++)
+		{
+			NatNetVersion[i] = 0;
+			ServerVersion[i] = 0;
+		}
+		
 		startThread();
 
-		sendPing();
+		sendPing(target_host);
 	}
 
 	~InternalThread()
@@ -184,13 +178,13 @@ struct ofxNatNet::InternalThread : public ofThread
 		}
 	}
 
-	void sendPing()
+	void sendPing(string host)
 	{
 		sPacket ping_packet;
 		ping_packet.iMessage = NAT_PING;
 		ping_packet.nDataBytes = 0;
 
-		Poco::Net::SocketAddress addr(network_interfce.broadcastAddress(), command_port);
+		Poco::Net::SocketAddress addr(Poco::Net::IPAddress(host), command_port);
 
 		connected = false;
 
@@ -228,7 +222,12 @@ struct ofxNatNet::InternalThread : public ofThread
 	{
 		int major = NatNetVersion[0];
 		int minor = NatNetVersion[1];
-
+		
+		if (major == 0 && minor == 0)
+		{
+			return;
+		}
+		
 		char *ptr = pData;
 
 		// message ID
@@ -676,10 +675,10 @@ struct ofxNatNet::InternalThread : public ofThread
 	}
 };
 
-void ofxNatNet::setup(string network_interface_ip, string multicast_group, int command_port, int data_port)
+void ofxNatNet::setup(string target_host, string multicast_group, int command_port, int data_port)
 {
 	dispose();
-	thread = new InternalThread(network_interface_ip, multicast_group, command_port, data_port);
+	thread = new InternalThread(target_host, multicast_group, command_port, data_port);
 }
 
 void ofxNatNet::dispose()

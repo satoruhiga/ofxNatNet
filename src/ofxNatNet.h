@@ -42,7 +42,7 @@ public:
 	ofxNatNet() : thread(NULL) {}
 	~ofxNatNet() { dispose(); }
 
-	void setup(string network_interface_ip = "", string multicast_group = "239.255.42.99", int command_port = 1510, int data_port = 1511);
+	void setup(string target_host, string multicast_group = "239.255.42.99", int command_port = 1510, int data_port = 1511);
 	void update();
 
 	bool isConnected();
