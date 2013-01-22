@@ -35,7 +35,9 @@ public:
 
 		bool found() const
 		{
-			return pos != ofVec3f(0, 0, 0);
+			return isnormal(pos.x)
+				&& isnormal(pos.y)
+				&& isnormal(pos.z);
 		}
 	};
 
