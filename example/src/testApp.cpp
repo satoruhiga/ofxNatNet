@@ -12,8 +12,9 @@ void testApp::setup()
 	ofSetVerticalSync(true);
 	ofBackground(0);
 
-	natnet.setup("192.168.0.10");
+	natnet.setup("192.168.0.10"); // server ip
 	natnet.setScale(100);
+	natnet.setDuplicatedPointRemovalDistance(2);
 }
 
 //--------------------------------------------------------------
@@ -40,18 +41,28 @@ void testApp::draw()
 	for (int i = 0; i < natnet.getNumRigidBody(); i++)
 	{
 		const ofxNatNet::RigidBody &RB = natnet.getRigidBody(i);
+		if (!RB.found()) continue;
 
 		ofPushMatrix();
 		glMultMatrixf(RB.getMatrix().getPtr());
 		ofDrawAxis(30);
+		ofBox(10);
 		ofPopMatrix();
 
 		ofSetColor(0, 255, 0);
-
+		
+		glBegin(GL_LINE_LOOP);
+		for (int n = 0; n < RB.markers.size(); n++)
+		{
+			glVertex3fv(RB.markers[n].getPtr());
+		}
+		glEnd();
+		
 		for (int n = 0; n < RB.markers.size(); n++)
 		{
 			ofBox(RB.markers[n], 5);
 		}
+
 	}
 
 

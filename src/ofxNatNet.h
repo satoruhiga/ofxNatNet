@@ -20,25 +20,25 @@ public:
 	struct RigidBody
 	{
 		int id;
-		ofVec3f pos;
-		ofQuaternion orientation;
+		ofMatrix4x4 matrix;
 		vector<Marker> markers;
+		
 		float mean_marker_error;
 
-		ofMatrix4x4 getMatrix() const
+		const ofMatrix4x4& getMatrix() const
 		{
-			ofMatrix4x4 matrix;
-			matrix.setTranslation(pos);
-			matrix.setRotate(orientation);
 			return matrix;
 		}
 
 		bool found() const
 		{
-			return isnormal(pos.x)
-				&& isnormal(pos.y)
-				&& isnormal(pos.z);
+			return isnormal(matrix(3, 0))
+				&& isnormal(matrix(3, 1))
+				&& isnormal(matrix(3, 2));
 		}
+		
+	private:
+		
 	};
 
 	ofxNatNet() : thread(NULL) {}
@@ -55,6 +55,8 @@ public:
 
 	void setScale(float v);
 	float getScale();
+	
+	void setDuplicatedPointRemovalDistance(float v);
 
 	inline const size_t getNumMarker() { return markers.size(); }
 	inline const Marker& getMarker(size_t index) { return markers[index]; }
@@ -78,7 +80,7 @@ protected:
 
 	int frame_number;
 	float latency;
-
+	
 	vector<Marker> markers;
 	vector<MarkerSet> markersets;
 	vector<RigidBody> rigidbodies;

@@ -71,8 +71,9 @@ struct ofxNatNet::InternalThread : public ofThread
 	float data_rate;
 	
 	float scale;
+	float duplicated_point_removal_distance;
 
-	InternalThread(string target_host, string multicast_group, int command_port, int data_port) : connected(false), target_host(target_host), command_port(command_port), frame_number(0), latency(0), scale(1), buffer_size(0), last_packet_received(0), data_rate(0)
+	InternalThread(string target_host, string multicast_group, int command_port, int data_port) : connected(false), target_host(target_host), command_port(command_port), frame_number(0), latency(0), scale(1), buffer_size(0), last_packet_received(0), data_rate(0), duplicated_point_removal_distance(0)
 	{
 		{
 			Poco::Net::IPAddress ip(multicast_group);
@@ -117,6 +118,19 @@ struct ofxNatNet::InternalThread : public ofThread
 		data_socket.close();
 	}
 
+	struct remove_dups
+	{
+		ofVec3f v;
+		float dist;
+		
+		remove_dups(const ofVec3f& v, float dist) : v(v), dist(dist) {}
+		
+		bool operator()(const ofVec3f &t)
+		{
+			return v.match(t, 4);
+		}
+	};
+
 	void threadedFunction()
 	{
 		Poco::Timespan timeout(0);
@@ -128,7 +142,6 @@ struct ofxNatNet::InternalThread : public ofThread
 				try
 				{
 					sPacket packet;
-
 					int n = data_socket.receiveBytes((char*)&packet, sizeof(sPacket));
 
 					if (n > 0)
@@ -140,7 +153,6 @@ struct ofxNatNet::InternalThread : public ofThread
 						float r = (1. / d);
 						
 						data_rate += (r - data_rate) * 0.1;
-						
 						last_packet_received = t;
 					}
 				}
@@ -162,7 +174,6 @@ struct ofxNatNet::InternalThread : public ofThread
 				try
 				{
 					sPacket packet;
-
 					int n = command_socket.receiveBytes((char*)&packet, sizeof(sPacket));
 
 					if (n > 0)
@@ -188,14 +199,14 @@ struct ofxNatNet::InternalThread : public ofThread
 
 		connected = false;
 
-		for (int i = 0; i < 3; i++)
+		for (int i = 0; i < 10; i++)
 		{
 			unsigned int n = command_socket.sendTo(&ping_packet, 4 + ping_packet.nDataBytes, addr);
 			if (n > 0) break;
 
 			sleep(100);
 
-			ofLogWarning("ofxNatNet") << "No route to host";
+			ofLogWarning("ofxNatNet") << "No route to host count: " << i;
 		}
 	}
 
@@ -242,7 +253,7 @@ struct ofxNatNet::InternalThread : public ofThread
 
 		if (MessageID == 7)      // FRAME OF MOCAP DATA packet
 		{
-			int frame_number;
+			int frame_number = 0;
 			float latency = 0;
 
 			vector<Marker> markers;
@@ -269,7 +280,6 @@ struct ofxNatNet::InternalThread : public ofThread
 				strcpy(szName, ptr);
 				int nDataBytes = (int)strlen(szName) + 1;
 				ptr += nDataBytes;
-
 				MS.name = szName;
 
 				// marker data
@@ -355,8 +365,11 @@ struct ofxNatNet::InternalThread : public ofThread
 				ptr += 4;
 				
 				RB.id = ID;
-				RB.pos.set(x * scale, y * scale, z * scale);
-				RB.orientation.set(qx, qy, qz, qw);
+				
+				ofMatrix4x4 mat;
+				mat.setTranslation(x * scale, y * scale, z * scale);
+				mat.setRotate(ofQuaternion(qx, qy, qz, qw));
+				RB.matrix = mat;
 				
 				// associated marker positions
 				int nRigidMarkers = 0;
@@ -383,9 +396,17 @@ struct ofxNatNet::InternalThread : public ofThread
 				
 				for (int k = 0; k < nRigidMarkers; k++)
 				{
-					RB.markers[k].set(markerData[k * 3] * scale,
-									  markerData[k * 3 + 1] * scale,
-									  markerData[k * 3 + 2] * scale);
+					ofVec3f v(markerData[k * 3] * scale,
+							  markerData[k * 3 + 1] * scale,
+							  markerData[k * 3 + 2] * scale);
+					
+					if (duplicated_point_removal_distance > 0)
+					{
+						vector<Marker>::iterator it = remove_if(markers.begin(), markers.end(), remove_dups(v, duplicated_point_removal_distance));
+						markers.erase(it, markers.end());
+					}
+					
+					RB.markers[k].set(v);
 				}
 
 				if (markerData)
@@ -730,6 +751,13 @@ float ofxNatNet::getScale()
 {
 	assert(thread);
 	return thread->scale;
+}
+
+void ofxNatNet::setDuplicatedPointRemovalDistance(float v)
+{
+	assert(thread);
+	if (v < 0) v = 0;
+	thread->duplicated_point_removal_distance = v;
 }
 
 void ofxNatNet::setBufferSize(int n)
