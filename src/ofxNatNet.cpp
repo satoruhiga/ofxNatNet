@@ -127,7 +127,7 @@ struct ofxNatNet::InternalThread : public ofThread
 		
 		bool operator()(const ofVec3f &t)
 		{
-			return v.match(t, 4);
+			return v.match(t, dist);
 		}
 	};
 
