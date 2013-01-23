@@ -60,16 +60,17 @@ public:
 
 	inline const size_t getNumMarker() { return markers.size(); }
 	inline const Marker& getMarker(size_t index) { return markers[index]; }
-
+	inline const vector<Marker>& getMarkers() { return markers; }
+	
 	inline const size_t getNumMarkerSet() { return markersets.size(); }
 	inline const MarkerSet& getMarkerSet(size_t index) { return markersets[index]; }
-
+	inline const vector<MarkerSet>& getMarkerSet() { return markersets; }
+	
 	inline const size_t getNumRigidBody() { return rigidbodies.size(); }
 	inline const RigidBody& getRigidBody(size_t index) { return rigidbodies[index]; }
-
-	inline const vector<Marker>& getMarkers() { return markers; }
-	inline const vector<MarkerSet>& getMarkerSet() { return markersets; }
 	inline const vector<RigidBody>& getRigidBodies() { return rigidbodies; }
+	
+	inline const vector<Marker>& getAllMarkers() { return all_markers; }
 
 	void setBufferSize(int n);
 	int getBufferSize();
@@ -84,6 +85,7 @@ protected:
 	vector<Marker> markers;
 	vector<MarkerSet> markersets;
 	vector<RigidBody> rigidbodies;
+	vector<Marker> all_markers;
 
 	void dispose();
 

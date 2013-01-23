@@ -66,6 +66,7 @@ struct ofxNatNet::InternalThread : public ofThread
 	vector<ofxNatNet::Marker> markers;
 	vector<ofxNatNet::MarkerSet> markersets;
 	vector<ofxNatNet::RigidBody> rigidbodies;
+	vector<ofxNatNet::Marker> all_markers;
 	
 	float last_packet_received;
 	float data_rate;
@@ -259,6 +260,7 @@ struct ofxNatNet::InternalThread : public ofThread
 			vector<Marker> markers;
 			vector<MarkerSet> markersets;
 			vector<RigidBody> rigidbodies;
+			vector<Marker> all_markers;
 
 			// frame number
 			memcpy(&frame_number, ptr, 4);
@@ -326,6 +328,8 @@ struct ofxNatNet::InternalThread : public ofThread
 
 				markers[j].set(x * scale, y * scale, z * scale);
 			}
+			
+			all_markers = markers;
 
 			// rigid bodies
 			int nRigidBodies = 0;
@@ -543,6 +547,7 @@ struct ofxNatNet::InternalThread : public ofThread
 				this->markers = markers;
 				this->markersets = markersets;
 				this->rigidbodies = rigidbodies;
+				this->all_markers = all_markers;
 
 				unlock();
 			}
@@ -724,6 +729,7 @@ void ofxNatNet::update()
 		markers = thread->markers;
 		markersets = thread->markersets;
 		rigidbodies = thread->rigidbodies;
+		all_markers = thread->all_markers;
 		
 		thread->unlock();
 	}
