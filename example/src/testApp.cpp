@@ -14,7 +14,7 @@ void testApp::setup()
 
 	natnet.setup("192.168.0.10"); // server ip
 	natnet.setScale(100);
-	natnet.setDuplicatedPointRemovalDistance(2);
+	natnet.setDuplicatedPointRemovalDistance(20);
 }
 
 //--------------------------------------------------------------
@@ -26,31 +26,45 @@ void testApp::update()
 //--------------------------------------------------------------
 void testApp::draw()
 {
+	ofEnableAlphaBlending();
+	
 	cam.begin();
 
 	ofDrawAxis(100);
 
-	ofNoFill();
+	ofFill();
 
-	ofSetColor(255, 0, 0);
+	// draw all markers
+	ofSetColor(255, 30);
 	for (int i = 0; i < natnet.getNumMarker(); i++)
 	{
-		ofBox(natnet.getMarker(i), 10);
+		ofBox(natnet.getMarker(i), 3);
 	}
 
+	ofNoFill();
+	
+	// draw filterd markers
+	ofSetColor(255);
+	for (int i = 0; i < natnet.getNumFilterdMarker(); i++)
+	{
+		ofBox(natnet.getFilterdMarker(i), 10);
+	}
+
+	// draw rigidbodies
 	for (int i = 0; i < natnet.getNumRigidBody(); i++)
 	{
-		const ofxNatNet::RigidBody &RB = natnet.getRigidBody(i);
-		if (!RB.found()) continue;
+		const ofxNatNet::RigidBody &RB = natnet.getRigidBodyAt(i);
+
+		if (RB.active())
+			ofSetColor(0, 255, 0);
+		else
+			ofSetColor(255, 0, 0);
 
 		ofPushMatrix();
 		glMultMatrixf(RB.getMatrix().getPtr());
 		ofDrawAxis(30);
-		ofBox(10);
 		ofPopMatrix();
 
-		ofSetColor(0, 255, 0);
-		
 		glBegin(GL_LINE_LOOP);
 		for (int n = 0; n < RB.markers.size(); n++)
 		{
@@ -62,10 +76,8 @@ void testApp::draw()
 		{
 			ofBox(RB.markers[n], 5);
 		}
-
 	}
-
-
+	
 	cam.end();
 
 	string str;
@@ -73,7 +85,7 @@ void testApp::draw()
 	str += "data rate: " + ofToString(natnet.getDataRate()) + "\n";
 	str += string("connected: ") + (natnet.isConnected() ? "YES" : "NO") + "\n";
 	str += "num marker: " + ofToString(natnet.getNumMarker()) + "\n";
-	str += "num markerset: " + ofToString(natnet.getNumMarkerSet()) + "\n";
+	str += "num filterd (non regidbodies) marker: " + ofToString(natnet.getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(natnet.getNumRigidBody()) + "\n";
 
 	ofSetColor(255);
