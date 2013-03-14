@@ -71,18 +71,20 @@ struct ofxNatNet::InternalThread : public ofThread
 	float last_packet_received;
 	float data_rate;
 	
-	float scale;
+	ofMatrix4x4 transform;
+	
 	float duplicated_point_removal_distance;
 
-	InternalThread(string target_host, string multicast_group, int command_port, int data_port) : connected(false), target_host(target_host), command_port(command_port), frame_number(0), latency(0), scale(1), buffer_size(0), last_packet_received(0), data_rate(0), duplicated_point_removal_distance(0)
+	InternalThread(string interface_name, string target_host, string multicast_group, int command_port, int data_port) : connected(false), target_host(target_host), command_port(command_port), frame_number(0), latency(0), buffer_size(0), last_packet_received(0), data_rate(0), duplicated_point_removal_distance(0)
 	{
 		{
-			Poco::Net::IPAddress ip(multicast_group);
-
-			Poco::Net::SocketAddress addr(Poco::Net::IPAddress(ip.family()), data_port);
+			Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(), data_port);
+			
+			Poco::Net::NetworkInterface interface = Poco::Net::NetworkInterface::forName(interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
+			
 			data_socket.bind(addr, true);
-			data_socket.joinGroup(ip);
-
+			data_socket.joinGroup(Poco::Net::IPAddress(multicast_group), interface);
+			
 			data_socket.setBlocking(false);
 			
 			data_socket.setReceiveBufferSize(0x100000);
@@ -90,10 +92,17 @@ struct ofxNatNet::InternalThread : public ofThread
 		}
 
 		{
-			command_socket.bind(Poco::Net::SocketAddress(Poco::Net::IPAddress::wildcard(), command_port));
-			command_socket.setBlocking(false);
-			command_socket.setBroadcast(true);
-
+			Poco::Net::SocketAddress address(Poco::Net::IPAddress::wildcard(), command_port);
+			command_socket.bind(address, true);
+			
+			command_socket.setReceiveBufferSize(0x100000);
+			assert(command_socket.getReceiveBufferSize() == 0x100000);
+		}
+		
+		{
+			Poco::Net::SocketAddress address(target_host, command_port);
+			command_socket.connect(address);
+			
 			command_socket.setSendBufferSize(0x100000);
 			assert(command_socket.getSendBufferSize() == 0x100000);
 		}
@@ -106,7 +115,7 @@ struct ofxNatNet::InternalThread : public ofThread
 		
 		startThread();
 		
-		sendPing(target_host);
+		sendPing();
 	}
 
 	~InternalThread()
@@ -187,20 +196,17 @@ struct ofxNatNet::InternalThread : public ofThread
 		}
 	}
 
-	void sendPing(string host)
+	void sendPing()
 	{
 		sPacket ping_packet;
 		ping_packet.iMessage = NAT_PING;
 		ping_packet.nDataBytes = 0;
 
-		Poco::Net::DatagramSocket sock;
-		Poco::Net::SocketAddress addr(Poco::Net::IPAddress(host), command_port);
-
 		connected = false;
 		
 		for (int i = 0; i < 3; i++)
 		{
-			unsigned int n = sock.sendTo(&ping_packet, 4 + ping_packet.nDataBytes, addr);
+			unsigned int n = command_socket.sendBytes(&ping_packet, 4 + ping_packet.nDataBytes);
 			if (n > 0 && connected) break;
 
 			sleep(100);
@@ -234,9 +240,9 @@ struct ofxNatNet::InternalThread : public ofThread
 		int minor = NatNetVersion[1];
 		
 		if (major == 0 && minor == 0)
-		{
 			return;
-		}
+		
+		ofQuaternion rot = transform.getRotate();
 		
 		char *ptr = pData;
 
@@ -298,8 +304,11 @@ struct ofxNatNet::InternalThread : public ofThread
 				float z = 0.0f;
 				memcpy(&z, ptr, 4);
 				ptr += 4;
+				
+				ofVec3f pp(x, y, z);
+				pp = transform.preMult(pp);
 
-				markers[j].set(x * scale, y * scale, z * scale);
+				markers[j] = pp;
 			}
 			
 			filterd_markers = markers;
@@ -343,9 +352,12 @@ struct ofxNatNet::InternalThread : public ofThread
 				
 				RB.id = ID;
 				
+				ofVec3f pp(x, y, z);
+				pp = transform.preMult(pp);
+				
 				ofMatrix4x4 mat;
-				mat.setTranslation(x * scale, y * scale, z * scale);
-				mat.setRotate(ofQuaternion(qx, qy, qz, qw));
+				mat.setTranslation(pp);
+				mat.setRotate(ofQuaternion(qx, qy, qz, qw) * rot);
 				RB.matrix = mat;
 				
 				// associated marker positions
@@ -373,10 +385,14 @@ struct ofxNatNet::InternalThread : public ofThread
 				
 				for (int k = 0; k < nRigidMarkers; k++)
 				{
-					ofVec3f v(markerData[k * 3] * scale,
-							  markerData[k * 3 + 1] * scale,
-							  markerData[k * 3 + 2] * scale);
-					RB.markers[k].set(v);
+					float x = markerData[k * 3];
+					float y = markerData[k * 3 + 1];
+					float z = markerData[k * 3 + 2];
+					
+					ofVec3f pp(x, y, z);
+					pp = transform.preMult(pp);
+
+					RB.markers[k] = pp;
 				}
 
 				if (markerData)
@@ -711,10 +727,10 @@ struct ofxNatNet::InternalThread : public ofThread
 	}
 };
 
-void ofxNatNet::setup(string target_host, string multicast_group, int command_port, int data_port)
+void ofxNatNet::setup(string interface_name, string target_host, string multicast_group, int command_port, int data_port)
 {
 	dispose();
-	thread = new InternalThread(target_host, multicast_group, command_port, data_port);
+	thread = new InternalThread(interface_name, target_host, multicast_group, command_port, data_port);
 }
 
 void ofxNatNet::dispose()
@@ -770,13 +786,13 @@ float ofxNatNet::getDataRate()
 void ofxNatNet::setScale(float v)
 {
 	assert(thread);
-	thread->scale = v;
+	thread->transform = ofMatrix4x4::newScaleMatrix(v, v, v);
 }
 
-float ofxNatNet::getScale()
+ofVec3f ofxNatNet::getScale()
 {
 	assert(thread);
-	return thread->scale;
+	return thread->transform.getScale();
 }
 
 void ofxNatNet::setDuplicatedPointRemovalDistance(float v)
@@ -802,4 +818,21 @@ void ofxNatNet::forceSetNatNetVersion(int v)
 {
 	assert(thread);
 	thread->NatNetVersion[0] = v;
+}
+
+void ofxNatNet::sendPing()
+{
+	thread->sendPing();
+}
+
+void ofxNatNet::setTransform(const ofMatrix4x4& m)
+{
+	assert(thread);
+	thread->transform = m;
+}
+
+const ofMatrix4x4& ofxNatNet::getTransform()
+{
+	assert(thread);
+	return thread->transform;
 }

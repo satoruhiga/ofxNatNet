@@ -38,8 +38,10 @@ public:
 	ofxNatNet() : thread(NULL) {}
 	~ofxNatNet() { dispose(); }
 
-	void setup(string target_host, string multicast_group = "239.255.42.99", int command_port = 1510, int data_port = 1511);
+	void setup(string interface_name, string target_host, string multicast_group = "239.255.42.99", int command_port = 1510, int data_port = 1511);
 	void update();
+	
+	void sendPing();
 
 	bool isConnected();
 	int getFrameNumber() { return frame_number; }
@@ -48,7 +50,10 @@ public:
 	float getDataRate();
 
 	void setScale(float v);
-	float getScale();
+	ofVec3f getScale();
+	
+	void setTransform(const ofMatrix4x4& m);
+	const ofMatrix4x4& getTransform();
 	
 	void setDuplicatedPointRemovalDistance(float v);
 
