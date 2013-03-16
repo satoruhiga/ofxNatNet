@@ -78,6 +78,8 @@ public:
 	int getBufferSize();
 	
 	void forceSetNatNetVersion(int v);
+	
+	void debugDraw();
 
 protected:
 

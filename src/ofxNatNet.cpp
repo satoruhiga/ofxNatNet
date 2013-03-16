@@ -836,3 +836,76 @@ const ofMatrix4x4& ofxNatNet::getTransform()
 	assert(thread);
 	return thread->transform;
 }
+
+void ofxNatNet::debugDraw()
+{
+	ofPushStyle();
+	
+	ofFill();
+	
+	// draw all markers
+	ofSetColor(255, 30);
+	for (int i = 0; i < getNumMarker(); i++)
+	{
+		ofBox(getMarker(i), 3);
+	}
+	
+	ofNoFill();
+	
+	// draw filterd markers
+	ofSetColor(255);
+	for (int i = 0; i < getNumFilterdMarker(); i++)
+	{
+		ofBox(getFilterdMarker(i), 10);
+	}
+	
+	// draw rigidbodies
+	for (int i = 0; i < getNumRigidBody(); i++)
+	{
+		const ofxNatNet::RigidBody &RB = getRigidBodyAt(i);
+		
+		if (RB.active())
+			ofSetColor(0, 255, 0);
+		else
+			ofSetColor(255, 0, 0);
+		
+		ofPushMatrix();
+		glMultMatrixf(RB.getMatrix().getPtr());
+		ofDrawAxis(30);
+		ofPopMatrix();
+		
+		glBegin(GL_LINE_LOOP);
+		for (int n = 0; n < RB.markers.size(); n++)
+		{
+			glVertex3fv(RB.markers[n].getPtr());
+		}
+		glEnd();
+		
+		for (int n = 0; n < RB.markers.size(); n++)
+		{
+			ofBox(RB.markers[n], 5);
+		}
+	}
+	
+	ofPushView();
+	ofSetupScreen();
+	
+	ofSetColor(255, 255, 0, 127);
+	ofFill();
+	ofRect(5, 5, 400, 94);
+	
+	string str;
+	str += "frames: " + ofToString(getFrameNumber()) + "\n";
+	str += "data rate: " + ofToString(getDataRate()) + "\n";
+	str += string("connected: ") + (isConnected() ? "YES" : "NO") + "\n";
+	str += "num marker: " + ofToString(getNumMarker()) + "\n";
+	str += "num filterd (non regidbodies) marker: " + ofToString(getNumFilterdMarker()) + "\n";
+	str += "num rigidbody: " + ofToString(getNumRigidBody()) + "\n";
+	
+	ofSetColor(0);
+	ofDrawBitmapString(str, 10, 20);
+
+	ofPopView();
+	
+	ofPopStyle();
+}
