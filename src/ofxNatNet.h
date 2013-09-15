@@ -80,6 +80,7 @@ public:
 	void forceSetNatNetVersion(int v);
 	
 	void debugDraw();
+	void debugDrawMarkers();
 
 protected:
 

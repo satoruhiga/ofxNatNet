@@ -74,48 +74,59 @@ struct ofxNatNet::InternalThread : public ofThread
 	ofMatrix4x4 transform;
 	
 	float duplicated_point_removal_distance;
+	
+	string error_str;
 
 	InternalThread(string interface_name, string target_host, string multicast_group, int command_port, int data_port) : connected(false), target_host(target_host), command_port(command_port), frame_number(0), latency(0), buffer_size(0), last_packet_received(0), data_rate(0), duplicated_point_removal_distance(0)
 	{
-		{
-			Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(), data_port);
-			
-			Poco::Net::NetworkInterface interface = Poco::Net::NetworkInterface::forName(interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
-			
-			data_socket.bind(addr, true);
-			data_socket.joinGroup(Poco::Net::IPAddress(multicast_group), interface);
-			
-			data_socket.setBlocking(false);
-			
-			data_socket.setReceiveBufferSize(0x100000);
-			assert(data_socket.getReceiveBufferSize() == 0x100000);
-		}
-
-		{
-			Poco::Net::SocketAddress address(Poco::Net::IPAddress::wildcard(), command_port);
-			command_socket.bind(address, true);
-			
-			command_socket.setReceiveBufferSize(0x100000);
-			assert(command_socket.getReceiveBufferSize() == 0x100000);
-		}
+		error_str = "";
 		
+		try
 		{
-			Poco::Net::SocketAddress address(target_host, command_port);
-			command_socket.connect(address);
+			{
+				Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(), data_port);
+				
+				Poco::Net::NetworkInterface interface = Poco::Net::NetworkInterface::forName(interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
+				
+				data_socket.bind(addr, true);
+				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group), interface);
+				
+				data_socket.setBlocking(false);
+				
+				data_socket.setReceiveBufferSize(0x100000);
+				assert(data_socket.getReceiveBufferSize() == 0x100000);
+			}
 			
-			command_socket.setSendBufferSize(0x100000);
-			assert(command_socket.getSendBufferSize() == 0x100000);
+			{
+				Poco::Net::SocketAddress address(Poco::Net::IPAddress::wildcard(), command_port);
+				command_socket.bind(address, true);
+				
+				command_socket.setReceiveBufferSize(0x100000);
+				assert(command_socket.getReceiveBufferSize() == 0x100000);
+			}
+			
+			{
+				Poco::Net::SocketAddress address(target_host, command_port);
+				command_socket.connect(address);
+				
+				command_socket.setSendBufferSize(0x100000);
+				assert(command_socket.getSendBufferSize() == 0x100000);
+			}
+			
+			for (int i = 0; i < 4; i++)
+			{
+				NatNetVersion[i] = 0;
+				ServerVersion[i] = 0;
+			}
+			
+			startThread();
+			
+			sendPing();
 		}
-		
-		for (int i = 0; i < 4; i++)
-		{
-			NatNetVersion[i] = 0;
-			ServerVersion[i] = 0;
+		catch (std::exception &e) {
+			ofLogError("ofxNatNet") << e.what();
+			error_str = e.what();
 		}
-		
-		startThread();
-		
-		sendPing();
 	}
 
 	~InternalThread()
@@ -837,7 +848,7 @@ const ofMatrix4x4& ofxNatNet::getTransform()
 	return thread->transform;
 }
 
-void ofxNatNet::debugDraw()
+void ofxNatNet::debugDrawMarkers()
 {
 	ofPushStyle();
 	
@@ -887,25 +898,33 @@ void ofxNatNet::debugDraw()
 		}
 	}
 	
+	ofPopStyle();
+}
+
+void ofxNatNet::debugDraw()
+{
+	debugDrawMarkers();
+	
+	ofPushStyle();
 	ofPushView();
-	ofSetupScreen();
+	ofSetupScreenPerspective();
 	
 	ofSetColor(255, 255, 0, 127);
 	ofFill();
 	ofRect(5, 5, 400, 94);
 	
 	string str;
+	if (thread->error_str != "") str += "ERROR: " + thread->error_str + "\n";
 	str += "frames: " + ofToString(getFrameNumber()) + "\n";
 	str += "data rate: " + ofToString(getDataRate()) + "\n";
 	str += string("connected: ") + (isConnected() ? "YES" : "NO") + "\n";
 	str += "num marker: " + ofToString(getNumMarker()) + "\n";
-	str += "num filterd (non regidbodies) marker: " + ofToString(getNumFilterdMarker()) + "\n";
+	str += "num filterd (non rigidbodies) marker: " + ofToString(getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(getNumRigidBody()) + "\n";
 	
 	ofSetColor(0);
 	ofDrawBitmapString(str, 10, 20);
 
 	ofPopView();
-	
 	ofPopStyle();
 }
