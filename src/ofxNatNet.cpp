@@ -1,5 +1,7 @@
 #include "ofxNatNet.h"
 
+#include <assert.h>
+
 #include <Poco/Net/SocketAddress.h>
 #include <Poco/Net/DatagramSocket.h>
 #include <Poco/Net/MulticastSocket.h>
@@ -86,23 +88,15 @@ struct ofxNatNet::InternalThread : public ofThread
 			{
 				Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(), data_port);
 				
-				Poco::Net::NetworkInterface interface = Poco::Net::NetworkInterface::forName(interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
+				Poco::Net::NetworkInterface _interface = Poco::Net::NetworkInterface::forName(interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
 				
 				data_socket.bind(addr, true);
-				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group), interface);
+				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group), _interface);
 				
 				data_socket.setBlocking(false);
 				
 				data_socket.setReceiveBufferSize(0x100000);
 				assert(data_socket.getReceiveBufferSize() == 0x100000);
-			}
-			
-			{
-				Poco::Net::SocketAddress address(Poco::Net::IPAddress::wildcard(), command_port);
-				command_socket.bind(address, true);
-				
-				command_socket.setReceiveBufferSize(0x100000);
-				assert(command_socket.getReceiveBufferSize() == 0x100000);
 			}
 			
 			{
@@ -202,8 +196,6 @@ struct ofxNatNet::InternalThread : public ofThread
 					ofLogError("ofxNatNet") << "udp socket error: " << exc.displayText();
 				}
 			}
-			
-			ofSleepMillis(1);
 		}
 	}
 
