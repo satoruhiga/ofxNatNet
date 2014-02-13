@@ -11,7 +11,9 @@ void testApp::setup()
 	ofSetFrameRate(60);
 	ofSetVerticalSync(true);
 	ofBackground(0);
-
+	
+	ofxNatNet::listInterfaces();
+	
 	natnet.setup("en0", "192.168.0.10"); // interface name, server ip
 	natnet.setScale(100);
 	natnet.setDuplicatedPointRemovalDistance(20);
@@ -38,7 +40,7 @@ void testApp::draw()
 	ofSetColor(255, 30);
 	for (int i = 0; i < natnet.getNumMarker(); i++)
 	{
-		ofBox(natnet.getMarker(i), 3);
+		ofDrawBox(natnet.getMarker(i), 3);
 	}
 
 	ofNoFill();
@@ -47,7 +49,7 @@ void testApp::draw()
 	ofSetColor(255);
 	for (int i = 0; i < natnet.getNumFilterdMarker(); i++)
 	{
-		ofBox(natnet.getFilterdMarker(i), 10);
+		ofDrawBox(natnet.getFilterdMarker(i), 10);
 	}
 
 	// draw rigidbodies
@@ -74,7 +76,7 @@ void testApp::draw()
 		
 		for (int n = 0; n < RB.markers.size(); n++)
 		{
-			ofBox(RB.markers[n], 5);
+			ofDrawBox(RB.markers[n], 5);
 		}
 	}
 	
