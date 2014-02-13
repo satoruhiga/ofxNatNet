@@ -81,6 +81,8 @@ public:
 	
 	void debugDraw();
 	void debugDrawMarkers();
+	
+	static void listInterfaces(ofLogLevel level = OF_LOG_NOTICE);
 
 protected:
 
