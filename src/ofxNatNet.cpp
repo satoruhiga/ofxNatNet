@@ -5,47 +5,43 @@
 #include <Poco/Net/MulticastSocket.h>
 #include <Poco/Net/NetworkInterface.h>
 
-#define MAX_NAMELENGTH              256
+#define MAX_NAMELENGTH 256
 
 // NATNET message ids
-#define NAT_PING                    0
-#define NAT_PINGRESPONSE            1
-#define NAT_REQUEST                 2
-#define NAT_RESPONSE                3
-#define NAT_REQUEST_MODELDEF        4
-#define NAT_MODELDEF                5
-#define NAT_REQUEST_FRAMEOFDATA     6
-#define NAT_FRAMEOFDATA             7
-#define NAT_MESSAGESTRING           8
-#define NAT_UNRECOGNIZED_REQUEST    100
-#define UNDEFINED                   999999.9999
+#define NAT_PING 0
+#define NAT_PINGRESPONSE 1
+#define NAT_REQUEST 2
+#define NAT_RESPONSE 3
+#define NAT_REQUEST_MODELDEF 4
+#define NAT_MODELDEF 5
+#define NAT_REQUEST_FRAMEOFDATA 6
+#define NAT_FRAMEOFDATA 7
+#define NAT_MESSAGESTRING 8
+#define NAT_UNRECOGNIZED_REQUEST 100
+#define UNDEFINED 999999.9999
 
 // sender
-typedef struct
-{
-	char szName[MAX_NAMELENGTH]; // sending app's name
-	unsigned char Version[4]; // sending app's version [major.minor.build.revision]
-	unsigned char NatNetVersion[4]; // sending app's NatNet version [major.minor.build.revision]
+struct sSender {
+	char szName[MAX_NAMELENGTH];  // sending app's name
+	unsigned char
+		Version[4];  // sending app's version [major.minor.build.revision]
+	unsigned char NatNetVersion
+		[4];  // sending app's NatNet version [major.minor.build.revision]
+};
 
-} sSender;
-
-typedef struct
-{
-	unsigned short iMessage; // message ID (e.g. NAT_FRAMEOFDATA)
-	unsigned short nDataBytes; // Num bytes in payload
-	union
-	{
+struct sPacket {
+	unsigned short iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
+	unsigned short nDataBytes;  // Num bytes in payload
+	union {
 		unsigned char cData[20000];
 		char szData[20000];
 		unsigned long lData[5000];
 		float fData[5000];
 		sSender Sender;
-	} Data; // Payload
+	} Data;  // Payload
+};
 
-} sPacket;
-
-struct ofxNatNet::InternalThread : public ofThread
-{
+struct ofxNatNet::InternalThread : public ofThread {
 	bool connected;
 	string target_host;
 
@@ -59,68 +55,80 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	size_t frame_number;
 	float latency;
-	
+
 	int buffer_size;
 	queue<sPacket> buffer;
 
 	vector<ofxNatNet::Marker> markers;
 	vector<ofxNatNet::Marker> filterd_markers;
-	
+
 	map<int, ofxNatNet::RigidBody> rigidbodies;
-	
+
 	float last_packet_received;
 	float data_rate;
-	
+
 	ofMatrix4x4 transform;
-	
+
 	float duplicated_point_removal_distance;
-	
+
 	string error_str;
 
-	InternalThread(string interface_name, string target_host, string multicast_group, int command_port, int data_port) : connected(false), target_host(target_host), command_port(command_port), frame_number(0), latency(0), buffer_size(0), last_packet_received(0), data_rate(0), duplicated_point_removal_distance(0)
-	{
+	InternalThread(string interface_name, string target_host,
+				   string multicast_group, int command_port, int data_port)
+		: connected(false)
+		, target_host(target_host)
+		, command_port(command_port)
+		, frame_number(0)
+		, latency(0)
+		, buffer_size(0)
+		, last_packet_received(0)
+		, data_rate(0)
+		, duplicated_point_removal_distance(0) {
 		error_str = "";
-		
-		try
-		{
+
+		try {
 			{
-				Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(), data_port);
-				
-				Poco::Net::NetworkInterface interface = Poco::Net::NetworkInterface::forName(interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
-				
+				Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(),
+											  data_port);
+
+				Poco::Net::NetworkInterface interface =
+					Poco::Net::NetworkInterface::forName(
+						interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
+
 				data_socket.bind(addr, true);
-				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group), interface);
-				
+				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group),
+									  interface);
+
 				data_socket.setBlocking(false);
-				
+
 				data_socket.setReceiveBufferSize(0x100000);
 				assert(data_socket.getReceiveBufferSize() == 0x100000);
 			}
-			
+
 			{
-				Poco::Net::SocketAddress address(Poco::Net::IPAddress::wildcard(), command_port);
+				Poco::Net::SocketAddress address(
+					Poco::Net::IPAddress::wildcard(), command_port);
 				command_socket.bind(address, true);
-				
+
 				command_socket.setReceiveBufferSize(0x100000);
 				assert(command_socket.getReceiveBufferSize() == 0x100000);
 			}
-			
+
 			{
 				Poco::Net::SocketAddress address(target_host, command_port);
 				command_socket.connect(address);
-				
+
 				command_socket.setSendBufferSize(0x100000);
 				assert(command_socket.getSendBufferSize() == 0x100000);
 			}
-			
-			for (int i = 0; i < 4; i++)
-			{
+
+			for (int i = 0; i < 4; i++) {
 				NatNetVersion[i] = 0;
 				ServerVersion[i] = 0;
 			}
-			
+
 			startThread();
-			
+
 			sendPing();
 		}
 		catch (std::exception &e) {
@@ -129,132 +137,113 @@ struct ofxNatNet::InternalThread : public ofThread
 		}
 	}
 
-	~InternalThread()
-	{
+	~InternalThread() {
 		if (isThreadRunning()) waitForThread(true);
 
 		data_socket.close();
 	}
 
-	struct remove_dups
-	{
+	struct remove_dups {
 		ofVec3f v;
 		float dist;
-		
-		remove_dups(const ofVec3f& v, float dist) : v(v), dist(dist) {}
-		
-		bool operator()(const ofVec3f &t)
-		{
-			return v.match(t, dist);
-		}
+
+		remove_dups(const ofVec3f &v, float dist)
+			: v(v)
+			, dist(dist) {}
+
+		bool operator()(const ofVec3f &t) { return v.match(t, dist); }
 	};
 
-	void threadedFunction()
-	{
+	void threadedFunction() {
 		Poco::Timespan timeout(0);
 
-		while (isThreadRunning())
-		{
-			if (data_socket.poll(timeout, Poco::Net::Socket::SELECT_READ))
-			{
-				try
-				{
+		while (isThreadRunning()) {
+			if (data_socket.poll(timeout, Poco::Net::Socket::SELECT_READ)) {
+				try {
 					sPacket packet;
-					int n = data_socket.receiveBytes((char*)&packet, sizeof(sPacket));
+					int n = data_socket.receiveBytes((char *)&packet,
+													 sizeof(sPacket));
 
-					if (n > 0)
-					{
+					if (n > 0) {
 						buffer.push(packet);
-						
+
 						float t = ofGetElapsedTimef();
 						float d = t - last_packet_received;
 						float r = (1. / d);
-						
+
 						data_rate += (r - data_rate) * 0.1;
 						last_packet_received = t;
 					}
 				}
-				catch (Poco::Exception& exc)
-				{
-					ofLogError("ofxNatNet") << "udp socket error: " << exc.displayText();
+				catch (Poco::Exception &exc) {
+					ofLogError("ofxNatNet")
+						<< "udp socket error: " << exc.displayText();
 				}
 			}
-			
-			while (buffer.size() > buffer_size)
-			{
+
+			while (buffer.size() > buffer_size) {
 				sPacket &packet = buffer.front();
 				dataPacketReceiverd(packet);
 				buffer.pop();
 			}
 
-			if (command_socket.poll(timeout, Poco::Net::Socket::SELECT_READ))
-			{
-				try
-				{
+			if (command_socket.poll(timeout, Poco::Net::Socket::SELECT_READ)) {
+				try {
 					sPacket packet;
-					int n = command_socket.receiveBytes((char*)&packet, sizeof(sPacket));
+					int n = command_socket.receiveBytes((char *)&packet,
+														sizeof(sPacket));
 
-					if (n > 0)
-						commandPacketReceived(packet);
+					if (n > 0) commandPacketReceived(packet);
 				}
-				catch (Poco::Exception& exc)
-				{
-					ofLogError("ofxNatNet") << "udp socket error: " << exc.displayText();
+				catch (Poco::Exception &exc) {
+					ofLogError("ofxNatNet")
+						<< "udp socket error: " << exc.displayText();
 				}
 			}
-			
+
 			ofSleepMillis(1);
 		}
 	}
 
-	void sendPing()
-	{
+	void sendPing() {
 		sPacket ping_packet;
 		ping_packet.iMessage = NAT_PING;
 		ping_packet.nDataBytes = 0;
 
 		connected = false;
-		
-		for (int i = 0; i < 3; i++)
-		{
-			unsigned int n = command_socket.sendBytes(&ping_packet, 4 + ping_packet.nDataBytes);
+
+		for (int i = 0; i < 3; i++) {
+			unsigned int n = command_socket.sendBytes(
+				&ping_packet, 4 + ping_packet.nDataBytes);
 			if (n > 0 && connected) break;
 
 			sleep(100);
-			
+
 			ofLogWarning("ofxNatNet") << "No route to host count: " << i;
 		}
 	}
 
-	void dataPacketReceiverd(sPacket &packet)
-	{
-		Unpack((char*)&packet);
-	}
+	void dataPacketReceiverd(sPacket &packet) { Unpack((char *)&packet); }
 
-	void commandPacketReceived(sPacket &packet)
-	{
-		if (packet.iMessage == NAT_PINGRESPONSE)
-		{
+	void commandPacketReceived(sPacket &packet) {
+		if (packet.iMessage == NAT_PINGRESPONSE) {
 			connected = true;
 
-			for (int i = 0; i < 4; i++)
-			{
+			for (int i = 0; i < 4; i++) {
 				NatNetVersion[i] = (int)packet.Data.Sender.NatNetVersion[i];
 				ServerVersion[i] = (int)packet.Data.Sender.Version[i];
 			}
 		}
 	}
 
-	void Unpack(char* pData)
-	{
+	void Unpack(char *pData) {
 		int major = NatNetVersion[0];
 		int minor = NatNetVersion[1];
-		
-		if (major == 0 && minor == 0)
-			return;
-		
+
+		if (major == 0 && minor == 0) return;
+
 		ofQuaternion rot = transform.getRotate();
-		
+
 		char *ptr = pData;
 
 		// message ID
@@ -267,7 +256,7 @@ struct ofxNatNet::InternalThread : public ofThread
 		memcpy(&nBytes, ptr, 2);
 		ptr += 2;
 
-		if (MessageID == 7)      // FRAME OF MOCAP DATA packet
+		if (MessageID == 7)  // FRAME OF MOCAP DATA packet
 		{
 			int frame_number = 0;
 			float latency = 0;
@@ -279,20 +268,22 @@ struct ofxNatNet::InternalThread : public ofThread
 			// frame number
 			memcpy(&frame_number, ptr, 4);
 			ptr += 4;
-			
+
 			// number of data sets (markersets, rigidbodies, etc)
-			int nMarkerSets = 0; memcpy(&nMarkerSets, ptr, 4); ptr += 4;
-			for (int i=0; i < nMarkerSets; i++)
-			{
+			int nMarkerSets = 0;
+			memcpy(&nMarkerSets, ptr, 4);
+			ptr += 4;
+			for (int i = 0; i < nMarkerSets; i++) {
 				// Markerset name
 				char szName[256];
 				strcpy(szName, ptr);
-				int nDataBytes = (int) strlen(szName) + 1;
+				int nDataBytes = (int)strlen(szName) + 1;
 				ptr += nDataBytes;
-				
-				int nMarkers = 0; memcpy(&nMarkers, ptr, 4); ptr += 4;
-				for(int j=0; j < nMarkers; j++)
-				{
+
+				int nMarkers = 0;
+				memcpy(&nMarkers, ptr, 4);
+				ptr += 4;
+				for (int j = 0; j < nMarkers; j++) {
 					ptr += 12;
 				}
 			}
@@ -304,8 +295,7 @@ struct ofxNatNet::InternalThread : public ofThread
 
 			markers.resize(nOtherMarkers);
 
-			for (int j = 0; j < nOtherMarkers; j++)
-			{
+			for (int j = 0; j < nOtherMarkers; j++) {
 				float x = 0.0f;
 				memcpy(&x, ptr, 4);
 				ptr += 4;
@@ -315,13 +305,13 @@ struct ofxNatNet::InternalThread : public ofThread
 				float z = 0.0f;
 				memcpy(&z, ptr, 4);
 				ptr += 4;
-				
+
 				ofVec3f pp(x, y, z);
 				pp = transform.preMult(pp);
 
 				markers[j] = pp;
 			}
-			
+
 			filterd_markers = markers;
 
 			// rigid bodies
@@ -331,46 +321,47 @@ struct ofxNatNet::InternalThread : public ofThread
 
 			rigidbodies.resize(nRigidBodies);
 
-			for (int j = 0; j < nRigidBodies; j++)
-			{
+			for (int j = 0; j < nRigidBodies; j++) {
 				ofxNatNet::RigidBody &RB = rigidbodies[j];
 
-				// rigid body pos/ori
+				ofVec3f pp;
+				ofQuaternion q;
+
 				int ID = 0;
 				memcpy(&ID, ptr, 4);
 				ptr += 4;
-				float x = 0.0f;
-				memcpy(&x, ptr, 4);
-				ptr += 4;
-				float y = 0.0f;
-				memcpy(&y, ptr, 4);
-				ptr += 4;
-				float z = 0.0f;
-				memcpy(&z, ptr, 4);
-				ptr += 4;
-				float qx = 0;
-				memcpy(&qx, ptr, 4);
-				ptr += 4;
-				float qy = 0;
-				memcpy(&qy, ptr, 4);
-				ptr += 4;
-				float qz = 0;
-				memcpy(&qz, ptr, 4);
-				ptr += 4;
-				float qw = 0;
-				memcpy(&qw, ptr, 4);
+
+				memcpy(&pp.x, ptr, 4);
 				ptr += 4;
 				
+				memcpy(&pp.y, ptr, 4);
+				ptr += 4;
+				
+				memcpy(&pp.z, ptr, 4);
+				ptr += 4;
+				
+				memcpy(&q.x(), ptr, 4);
+				ptr += 4;
+				
+				memcpy(&q.y(), ptr, 4);
+				ptr += 4;
+				
+				memcpy(&q.z(), ptr, 4);
+				ptr += 4;
+				
+				memcpy(&q.w(), ptr, 4);
+				ptr += 4;
+
 				RB.id = ID;
+				RB.raw_position = pp;
 				
-				ofVec3f pp(x, y, z);
 				pp = transform.preMult(pp);
-				
+
 				ofMatrix4x4 mat;
 				mat.setTranslation(pp);
-				mat.setRotate(ofQuaternion(qx, qy, qz, qw) * rot);
+				mat.setRotate(q * rot);
 				RB.matrix = mat;
-				
+
 				// associated marker positions
 				int nRigidMarkers = 0;
 				memcpy(&nRigidMarkers, ptr, 4);
@@ -379,12 +370,11 @@ struct ofxNatNet::InternalThread : public ofThread
 				RB.markers.resize(nRigidMarkers);
 
 				int nBytes = nRigidMarkers * 3 * sizeof(float);
-				float* markerData = (float*)malloc(nBytes);
+				float *markerData = (float *)malloc(nBytes);
 				memcpy(markerData, ptr, nBytes);
 				ptr += nBytes;
 
-				if (major >= 2)
-				{
+				if (major >= 2) {
 					// associated marker IDs
 					nBytes = nRigidMarkers * sizeof(int);
 					ptr += nBytes;
@@ -393,24 +383,21 @@ struct ofxNatNet::InternalThread : public ofThread
 					nBytes = nRigidMarkers * sizeof(float);
 					ptr += nBytes;
 				}
-				
-				for (int k = 0; k < nRigidMarkers; k++)
-				{
+
+				for (int k = 0; k < nRigidMarkers; k++) {
 					float x = markerData[k * 3];
 					float y = markerData[k * 3 + 1];
 					float z = markerData[k * 3 + 2];
-					
+
 					ofVec3f pp(x, y, z);
 					pp = transform.preMult(pp);
 
 					RB.markers[k] = pp;
 				}
 
-				if (markerData)
-					free(markerData);
+				if (markerData) free(markerData);
 
-				if (major >= 2)
-				{
+				if (major >= 2) {
 					// Mean marker error
 					float fError = 0.0f;
 					memcpy(&fError, ptr, 4);
@@ -418,106 +405,7 @@ struct ofxNatNet::InternalThread : public ofThread
 
 					RB.mean_marker_error = fError;
 				}
-			} // next rigid body
-
-			// TODO: parse skeleton
-
-			/*
-			// skeletons
-			if (((major == 2) && (minor > 0)) || (major > 2))
-			{
-				int nSkeletons = 0;
-				memcpy(&nSkeletons, ptr, 4);
-				ptr += 4;
-				printf("Skeleton Count : %d\n", nSkeletons);
-				for (int j = 0; j < nSkeletons; j++)
-				{
-					// skeleton id
-					int skeletonID = 0;
-					memcpy(&skeletonID, ptr, 4);
-					ptr += 4;
-					// # of rigid bodies (bones) in skeleton
-					int nRigidBodies = 0;
-					memcpy(&nRigidBodies, ptr, 4);
-					ptr += 4;
-					printf("Rigid Body Count : %d\n", nRigidBodies);
-					for (int j = 0; j < nRigidBodies; j++)
-					{
-						// rigid body pos/ori
-						int ID = 0;
-						memcpy(&ID, ptr, 4);
-						ptr += 4;
-						float x = 0.0f;
-						memcpy(&x, ptr, 4);
-						ptr += 4;
-						float y = 0.0f;
-						memcpy(&y, ptr, 4);
-						ptr += 4;
-						float z = 0.0f;
-						memcpy(&z, ptr, 4);
-						ptr += 4;
-						float qx = 0;
-						memcpy(&qx, ptr, 4);
-						ptr += 4;
-						float qy = 0;
-						memcpy(&qy, ptr, 4);
-						ptr += 4;
-						float qz = 0;
-						memcpy(&qz, ptr, 4);
-						ptr += 4;
-						float qw = 0;
-						memcpy(&qw, ptr, 4);
-						ptr += 4;
-						printf("ID : %d\n", ID);
-						printf("pos: [%3.2f,%3.2f,%3.2f]\n", x, y, z);
-						printf("ori: [%3.2f,%3.2f,%3.2f,%3.2f]\n", qx, qy, qz, qw);
-
-						// associated marker positions
-						int nRigidMarkers = 0;
-						memcpy(&nRigidMarkers, ptr, 4);
-						ptr += 4;
-						printf("Marker Count: %d\n", nRigidMarkers);
-						int nBytes = nRigidMarkers * 3 * sizeof(float);
-						float* markerData = (float*)malloc(nBytes);
-						memcpy(markerData, ptr, nBytes);
-						ptr += nBytes;
-
-						// associated marker IDs
-						nBytes = nRigidMarkers * sizeof(int);
-						int* markerIDs = (int*)malloc(nBytes);
-						memcpy(markerIDs, ptr, nBytes);
-						ptr += nBytes;
-
-						// associated marker sizes
-						nBytes = nRigidMarkers * sizeof(float);
-						float* markerSizes = (float*)malloc(nBytes);
-						memcpy(markerSizes, ptr, nBytes);
-						ptr += nBytes;
-
-						for (int k = 0; k < nRigidMarkers; k++)
-						{
-							printf("\tMarker %d: id=%d\tsize=%3.1f\tpos=[%3.2f,%3.2f,%3.2f]\n", k, markerIDs[k], markerSizes[k], markerData[k * 3], markerData[k * 3 + 1], markerData[k * 3 + 2]);
-						}
-
-						// Mean marker error
-						float fError = 0.0f;
-						memcpy(&fError, ptr, 4);
-						ptr += 4;
-						printf("Mean marker error: %3.2f\n", fError);
-
-						// release resources
-						if (markerIDs)
-							free(markerIDs);
-						if (markerSizes)
-							free(markerSizes);
-						if (markerData)
-							free(markerData);
-
-					} // next rigid body
-
-				} // next skeleton
-			}
-			*/
+			}  // next rigid body
 
 			// latency
 			memcpy(&latency, ptr, 4);
@@ -531,65 +419,51 @@ struct ofxNatNet::InternalThread : public ofThread
 			ptr += 4;
 
 			// filter markers
-			
-			if (duplicated_point_removal_distance > 0)
-			{
-				
-				map<int, ofxNatNet::RigidBody>::iterator it = this->rigidbodies.begin();
-				while (it != this->rigidbodies.end())
-				{
+			if (duplicated_point_removal_distance > 0) {
+				map<int, ofxNatNet::RigidBody>::iterator it =
+					this->rigidbodies.begin();
+				while (it != this->rigidbodies.end()) {
 					ofxNatNet::RigidBody &RB = it->second;
-					
-					for (int i = 0; i < RB.markers.size(); i++)
-					{
+
+					for (int i = 0; i < RB.markers.size(); i++) {
 						ofVec3f &v = RB.markers[i];
-						vector<Marker>::iterator it = remove_if(filterd_markers.begin(), filterd_markers.end(), remove_dups(v, duplicated_point_removal_distance));
+						vector<Marker>::iterator it = remove_if(
+							filterd_markers.begin(), filterd_markers.end(),
+							remove_dups(v, duplicated_point_removal_distance));
 						filterd_markers.erase(it, filterd_markers.end());
 					}
-					
+
 					it++;
 				}
-				
 			}
 
 			// copy to mainthread
-
-			if (lock())
-			{
+			if (lock()) {
 				this->latency = latency;
 				this->frame_number = frame_number;
 				this->markers = markers;
 				this->filterd_markers = filterd_markers;
-				
-				{
-					map<int, ofxNatNet::RigidBody>::iterator it = this->rigidbodies.begin();
-					while (it != this->rigidbodies.end())
-					{
-						it->second._active = false;
-						it++;
-					}
-					
-					for (int i = 0; i < rigidbodies.size(); i++)
-					{
-						RigidBody &RB = rigidbodies[i];
-						ofMatrix4x4 &m = RB.matrix;
-						
-						bool found =  isnormal(m(3, 0))
-							&& isnormal(m(3, 1))
-							&& isnormal(m(3, 2));
 
-						if (found)
-						{
-							RB._active = true;
-							this->rigidbodies[RB.id] = RB;
+				{
+					for (int i = 0; i < rigidbodies.size(); i++) {
+						RigidBody &RB = rigidbodies[i];
+						RigidBody &tRB = this->rigidbodies[RB.id];
+						ofMatrix4x4 &m = RB.matrix;
+
+						bool found = isnormal(m(3, 0)) && isnormal(m(3, 1)) &&
+									 isnormal(m(3, 2));
+
+						if (found) {
+							bool active = tRB.raw_position != RB.raw_position;
+							tRB = RB;
+							tRB._active = active;
 						}
 					}
 				}
 
 				unlock();
 			}
-		}
-		else if (MessageID == 5) // Data Descriptions
+		} else if (MessageID == 5)  // Data Descriptions
 		{
 			// TODO: impl description
 
@@ -729,50 +603,42 @@ struct ofxNatNet::InternalThread : public ofThread
 			}   // next dataset
 
 			 */
-		}
-		else
-		{
+		} else {
 			ofLogError("ofxNatNet") << "Unrecognized Packet Type";
 		}
-
 	}
 };
 
-void ofxNatNet::setup(string interface_name, string target_host, string multicast_group, int command_port, int data_port)
-{
+void ofxNatNet::setup(string interface_name, string target_host,
+					  string multicast_group, int command_port, int data_port) {
 	dispose();
-	thread = new InternalThread(interface_name, target_host, multicast_group, command_port, data_port);
+	thread = new InternalThread(interface_name, target_host, multicast_group,
+								command_port, data_port);
 }
 
-void ofxNatNet::dispose()
-{
-	if (thread)
-		delete thread;
+void ofxNatNet::dispose() {
+	if (thread) delete thread;
 	thread = NULL;
 }
 
-void ofxNatNet::update()
-{
-	if (thread == NULL)
-	{
+void ofxNatNet::update() {
+	if (thread == NULL) {
 		ofLogError("ofxNatNet") << "call setup() first";
 		return;
 	}
 
-	if (thread->lock())
-	{
+	if (thread->lock()) {
 		frame_number = thread->frame_number;
 		latency = thread->latency;
 		markers = thread->markers;
 		filterd_markers = thread->filterd_markers;
-		
+
 		{
 			rigidbodies = thread->rigidbodies;
 			rigidbodies_arr.clear();
-			
+
 			map<int, RigidBody>::iterator it = thread->rigidbodies.begin();
-			while (it != thread->rigidbodies.end())
-			{
+			while (it != thread->rigidbodies.end()) {
 				rigidbodies_arr.push_back(&it->second);
 				it++;
 			}
@@ -782,149 +648,132 @@ void ofxNatNet::update()
 	}
 }
 
-bool ofxNatNet::isConnected()
-{
+bool ofxNatNet::isConnected() {
 	if (!thread) return false;
 	return thread->connected;
 }
 
-float ofxNatNet::getDataRate()
-{
+float ofxNatNet::getDataRate() {
 	if (!thread) return 0;
 	return thread->data_rate;
 }
 
-void ofxNatNet::setScale(float v)
-{
+void ofxNatNet::setScale(float v) {
 	assert(thread);
 	thread->transform = ofMatrix4x4::newScaleMatrix(v, v, v);
 }
 
-ofVec3f ofxNatNet::getScale()
-{
+ofVec3f ofxNatNet::getScale() {
 	assert(thread);
 	return thread->transform.getScale();
 }
 
-void ofxNatNet::setDuplicatedPointRemovalDistance(float v)
-{
+void ofxNatNet::setDuplicatedPointRemovalDistance(float v) {
 	assert(thread);
 	if (v < 0) v = 0;
 	thread->duplicated_point_removal_distance = v;
 }
 
-void ofxNatNet::setBufferSize(int n)
-{
+void ofxNatNet::setBufferSize(int n) {
 	assert(thread);
 	thread->buffer_size = ofClamp(n, 0, 1000);
 }
 
-int ofxNatNet::getBufferSize()
-{
+int ofxNatNet::getBufferSize() {
 	assert(thread);
 	return thread->buffer_size;
 }
 
-void ofxNatNet::forceSetNatNetVersion(int v)
-{
+void ofxNatNet::forceSetNatNetVersion(int v) {
 	assert(thread);
 	thread->NatNetVersion[0] = v;
 }
 
-void ofxNatNet::sendPing()
-{
-	thread->sendPing();
-}
+void ofxNatNet::sendPing() { thread->sendPing(); }
 
-void ofxNatNet::setTransform(const ofMatrix4x4& m)
-{
+void ofxNatNet::setTransform(const ofMatrix4x4 &m) {
 	assert(thread);
 	thread->transform = m;
 }
 
-const ofMatrix4x4& ofxNatNet::getTransform()
-{
+const ofMatrix4x4 &ofxNatNet::getTransform() {
 	assert(thread);
 	return thread->transform;
 }
 
-void ofxNatNet::debugDrawMarkers()
-{
+void ofxNatNet::debugDrawMarkers() {
 	ofPushStyle();
-	
+
 	ofFill();
-	
+
 	// draw all markers
 	ofSetColor(255, 30);
-	for (int i = 0; i < getNumMarker(); i++)
-	{
-		ofBox(getMarker(i), 3);
+	for (int i = 0; i < getNumMarker(); i++) {
+		ofDrawBox(getMarker(i), 3);
 	}
-	
+
 	ofNoFill();
-	
+
 	// draw filterd markers
 	ofSetColor(255);
-	for (int i = 0; i < getNumFilterdMarker(); i++)
-	{
-		ofBox(getFilterdMarker(i), 10);
+	for (int i = 0; i < getNumFilterdMarker(); i++) {
+		ofDrawBox(getFilterdMarker(i), 10);
 	}
-	
+
 	// draw rigidbodies
-	for (int i = 0; i < getNumRigidBody(); i++)
-	{
+	for (int i = 0; i < getNumRigidBody(); i++) {
 		const ofxNatNet::RigidBody &RB = getRigidBodyAt(i);
-		
-		if (RB.active())
+
+		if (RB.isActive())
 			ofSetColor(0, 255, 0);
 		else
 			ofSetColor(255, 0, 0);
-		
+
 		ofPushMatrix();
 		glMultMatrixf(RB.getMatrix().getPtr());
 		ofDrawAxis(30);
 		ofPopMatrix();
-		
+
 		glBegin(GL_LINE_LOOP);
-		for (int n = 0; n < RB.markers.size(); n++)
-		{
+		for (int n = 0; n < RB.markers.size(); n++) {
 			glVertex3fv(RB.markers[n].getPtr());
 		}
 		glEnd();
-		
-		for (int n = 0; n < RB.markers.size(); n++)
-		{
-			ofBox(RB.markers[n], 5);
+
+		for (int n = 0; n < RB.markers.size(); n++) {
+			ofDrawBox(RB.markers[n], 5);
 		}
 	}
-	
+
 	ofPopStyle();
 }
 
-void ofxNatNet::debugDraw()
-{
+void ofxNatNet::debugDraw() {
 	debugDrawMarkers();
-	
+
 	ofPushStyle();
 	ofPushView();
 	ofSetupScreenPerspective();
-	
+
 	ofSetColor(255, 255, 0, 127);
 	ofFill();
 	ofRect(5, 5, 400, 94);
-	
+
 	string str;
 	if (thread->error_str != "") str += "ERROR: " + thread->error_str + "\n";
 	str += "frames: " + ofToString(getFrameNumber()) + "\n";
 	str += "data rate: " + ofToString(getDataRate()) + "\n";
 	str += string("connected: ") + (isConnected() ? "YES" : "NO") + "\n";
 	str += "num marker: " + ofToString(getNumMarker()) + "\n";
-	str += "num filterd (non rigidbodies) marker: " + ofToString(getNumFilterdMarker()) + "\n";
+	str += "num filterd (non rigidbodies) marker: " +
+		   ofToString(getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(getNumRigidBody()) + "\n";
-	
+
 	ofSetColor(0);
 	ofDrawBitmapString(str, 10, 20);
 
 	ofPopView();
 	ofPopStyle();
 }
+
+

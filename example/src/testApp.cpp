@@ -6,28 +6,23 @@ ofxNatNet natnet;
 ofEasyCam cam;
 
 //--------------------------------------------------------------
-void testApp::setup()
-{
+void testApp::setup() {
 	ofSetFrameRate(60);
 	ofSetVerticalSync(true);
 	ofBackground(0);
 
-	natnet.setup("en0", "192.168.0.10"); // interface name, server ip
+	natnet.setup("en7", "10.0.1.1");  // interface name, server ip
 	natnet.setScale(100);
 	natnet.setDuplicatedPointRemovalDistance(20);
 }
 
 //--------------------------------------------------------------
-void testApp::update()
-{
-	natnet.update();
-}
+void testApp::update() { natnet.update(); }
 
 //--------------------------------------------------------------
-void testApp::draw()
-{
+void testApp::draw() {
 	ofEnableAlphaBlending();
-	
+
 	cam.begin();
 
 	ofDrawAxis(100);
@@ -36,26 +31,23 @@ void testApp::draw()
 
 	// draw all markers
 	ofSetColor(255, 30);
-	for (int i = 0; i < natnet.getNumMarker(); i++)
-	{
-		ofBox(natnet.getMarker(i), 3);
+	for (int i = 0; i < natnet.getNumMarker(); i++) {
+		ofDrawBox(natnet.getMarker(i), 3);
 	}
 
 	ofNoFill();
-	
+
 	// draw filterd markers
 	ofSetColor(255);
-	for (int i = 0; i < natnet.getNumFilterdMarker(); i++)
-	{
-		ofBox(natnet.getFilterdMarker(i), 10);
+	for (int i = 0; i < natnet.getNumFilterdMarker(); i++) {
+		ofDrawBox(natnet.getFilterdMarker(i), 10);
 	}
 
 	// draw rigidbodies
-	for (int i = 0; i < natnet.getNumRigidBody(); i++)
-	{
+	for (int i = 0; i < natnet.getNumRigidBody(); i++) {
 		const ofxNatNet::RigidBody &RB = natnet.getRigidBodyAt(i);
 
-		if (RB.active())
+		if (RB.isActive())
 			ofSetColor(0, 255, 0);
 		else
 			ofSetColor(255, 0, 0);
@@ -66,18 +58,16 @@ void testApp::draw()
 		ofPopMatrix();
 
 		glBegin(GL_LINE_LOOP);
-		for (int n = 0; n < RB.markers.size(); n++)
-		{
+		for (int n = 0; n < RB.markers.size(); n++) {
 			glVertex3fv(RB.markers[n].getPtr());
 		}
 		glEnd();
-		
-		for (int n = 0; n < RB.markers.size(); n++)
-		{
-			ofBox(RB.markers[n], 5);
+
+		for (int n = 0; n < RB.markers.size(); n++) {
+			ofDrawBox(RB.markers[n], 5);
 		}
 	}
-	
+
 	cam.end();
 
 	string str;
@@ -85,7 +75,8 @@ void testApp::draw()
 	str += "data rate: " + ofToString(natnet.getDataRate()) + "\n";
 	str += string("connected: ") + (natnet.isConnected() ? "YES" : "NO") + "\n";
 	str += "num marker: " + ofToString(natnet.getNumMarker()) + "\n";
-	str += "num filterd (non regidbodies) marker: " + ofToString(natnet.getNumFilterdMarker()) + "\n";
+	str += "num filterd (non regidbodies) marker: " +
+		   ofToString(natnet.getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(natnet.getNumRigidBody()) + "\n";
 
 	ofSetColor(255);
@@ -93,55 +84,28 @@ void testApp::draw()
 }
 
 //--------------------------------------------------------------
-void testApp::keyPressed(int key)
-{
-
-}
+void testApp::keyPressed(int key) {}
 
 //--------------------------------------------------------------
-void testApp::keyReleased(int key)
-{
-
-}
+void testApp::keyReleased(int key) {}
 
 //--------------------------------------------------------------
-void testApp::mouseMoved(int x, int y)
-{
-
-}
+void testApp::mouseMoved(int x, int y) {}
 
 //--------------------------------------------------------------
-void testApp::mouseDragged(int x, int y, int button)
-{
-
-}
+void testApp::mouseDragged(int x, int y, int button) {}
 
 //--------------------------------------------------------------
-void testApp::mousePressed(int x, int y, int button)
-{
-
-}
+void testApp::mousePressed(int x, int y, int button) {}
 
 //--------------------------------------------------------------
-void testApp::mouseReleased(int x, int y, int button)
-{
-
-}
+void testApp::mouseReleased(int x, int y, int button) {}
 
 //--------------------------------------------------------------
-void testApp::windowResized(int w, int h)
-{
-
-}
+void testApp::windowResized(int w, int h) {}
 
 //--------------------------------------------------------------
-void testApp::gotMessage(ofMessage msg)
-{
-
-}
+void testApp::gotMessage(ofMessage msg) {}
 
 //--------------------------------------------------------------
-void testApp::dragEvent(ofDragInfo dragInfo)
-{
-
-}
+void testApp::dragEvent(ofDragInfo dragInfo) {}
