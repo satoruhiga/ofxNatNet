@@ -41,6 +41,11 @@ struct sPacket {
 	} Data;  // Payload
 };
 
+struct Packet {
+	float timestamp;
+	struct sPacket packet;
+};
+
 struct ofxNatNet::InternalThread : public ofThread {
 	bool connected;
 	string target_host;
@@ -56,8 +61,8 @@ struct ofxNatNet::InternalThread : public ofThread {
 	size_t frame_number;
 	float latency;
 
-	int buffer_size;
-	queue<sPacket> buffer;
+	float buffer_time;
+	queue<Packet> buffer;
 
 	vector<ofxNatNet::Marker> markers;
 	vector<ofxNatNet::Marker> filterd_markers;
@@ -80,7 +85,7 @@ struct ofxNatNet::InternalThread : public ofThread {
 		, command_port(command_port)
 		, frame_number(0)
 		, latency(0)
-		, buffer_size(0)
+		, buffer_time(0)
 		, last_packet_received(0)
 		, data_rate(0)
 		, duplicated_point_removal_distance(0) {
@@ -130,8 +135,7 @@ struct ofxNatNet::InternalThread : public ofThread {
 			startThread();
 
 			sendPing();
-		}
-		catch (std::exception &e) {
+		} catch (std::exception &e) {
 			ofLogError("ofxNatNet") << e.what();
 			error_str = e.what();
 		}
@@ -158,32 +162,38 @@ struct ofxNatNet::InternalThread : public ofThread {
 		Poco::Timespan timeout(0);
 
 		while (isThreadRunning()) {
+			float t = ofGetElapsedTimef();
+			
 			if (data_socket.poll(timeout, Poco::Net::Socket::SELECT_READ)) {
 				try {
-					sPacket packet;
-					int n = data_socket.receiveBytes((char *)&packet,
+					Packet packet;
+					int n = data_socket.receiveBytes((char *)&packet.packet,
 													 sizeof(sPacket));
 
 					if (n > 0) {
+						packet.timestamp = t;
 						buffer.push(packet);
 
-						float t = ofGetElapsedTimef();
 						float d = t - last_packet_received;
 						float r = (1. / d);
 
 						data_rate += (r - data_rate) * 0.1;
 						last_packet_received = t;
 					}
-				}
-				catch (Poco::Exception &exc) {
+				} catch (Poco::Exception &exc) {
 					ofLogError("ofxNatNet")
 						<< "udp socket error: " << exc.displayText();
 				}
 			}
-
-			while (buffer.size() > buffer_size) {
-				sPacket &packet = buffer.front();
-				dataPacketReceiverd(packet);
+			
+			float target_time = t - buffer_time;
+			while (buffer.size()) {
+				Packet &packet = buffer.front();
+				if (packet.timestamp >= target_time) {
+					break;
+				}
+				
+				dataPacketReceiverd(packet.packet);
 				buffer.pop();
 			}
 
@@ -194,8 +204,7 @@ struct ofxNatNet::InternalThread : public ofThread {
 														sizeof(sPacket));
 
 					if (n > 0) commandPacketReceived(packet);
-				}
-				catch (Poco::Exception &exc) {
+				} catch (Poco::Exception &exc) {
 					ofLogError("ofxNatNet")
 						<< "udp socket error: " << exc.displayText();
 				}
@@ -239,7 +248,7 @@ struct ofxNatNet::InternalThread : public ofThread {
 	void Unpack(char *pData) {
 		int major = NatNetVersion[0];
 		int minor = NatNetVersion[1];
-
+		
 		if (major == 0 && minor == 0) return;
 
 		ofQuaternion rot = transform.getRotate();
@@ -674,14 +683,14 @@ void ofxNatNet::setDuplicatedPointRemovalDistance(float v) {
 	thread->duplicated_point_removal_distance = v;
 }
 
-void ofxNatNet::setBufferSize(int n) {
+void ofxNatNet::setBufferTime(float sec) {
 	assert(thread);
-	thread->buffer_size = ofClamp(n, 0, 1000);
+	thread->buffer_time = ofClamp(sec, 0, 10);
 }
 
-int ofxNatNet::getBufferSize() {
+int ofxNatNet::getBufferTime() {
 	assert(thread);
-	return thread->buffer_size;
+	return thread->buffer_time;
 }
 
 void ofxNatNet::forceSetNatNetVersion(int v) {

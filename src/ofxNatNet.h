@@ -76,8 +76,8 @@ public:
 		return true;
 	}
 
-	void setBufferSize(int n);
-	int getBufferSize();
+	void setBufferTime(float sec);
+	int getBufferTime();
 
 	void forceSetNatNetVersion(int v);
 
