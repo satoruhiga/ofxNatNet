@@ -828,12 +828,10 @@ void ofxNatNet::debugDrawMarkers()
 	ofPopStyle();
 }
 
-void ofxNatNet::debugDraw()
+void ofxNatNet::debugDrawInformation()
 {
-	debugDrawMarkers();
-
 	ofPushStyle();
-
+	
 	string str;
 	if (thread->error_str != "") str += "ERROR: " + thread->error_str + "\n";
 	str += "frames: " + ofToString(getFrameNumber()) + "\n";
@@ -841,10 +839,16 @@ void ofxNatNet::debugDraw()
 	str += string("connected: ") + (isConnected() ? "YES" : "NO") + "\n";
 	str += "num marker: " + ofToString(getNumMarker()) + "\n";
 	str += "num filterd (non rigidbodies) marker: " +
-		   ofToString(getNumFilterdMarker()) + "\n";
+	ofToString(getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(getNumRigidBody());
 	
 	ofDrawBitmapStringHighlight(str, 10, 20, ofColor(40), ofColor(255));
-
+	
 	ofPopStyle();
+}
+
+void ofxNatNet::debugDraw()
+{
+	debugDrawMarkers();
+	debugDrawInformation();
 }

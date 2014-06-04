@@ -92,6 +92,7 @@ public:
 	void forceSetNatNetVersion(int v);
 
 	void debugDraw();
+	void debugDrawInformation();
 	void debugDrawMarkers();
 
 protected:
