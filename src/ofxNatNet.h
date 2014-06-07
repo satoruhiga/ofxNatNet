@@ -2,14 +2,16 @@
 
 #include "ofMain.h"
 
-class ofxNatNet {
+class ofxNatNet
+{
 	class InternalThread;
 	friend class InternalThread;
 
 public:
 	typedef ofVec3f Marker;
 
-	class RigidBody {
+	class RigidBody
+	{
 		friend class InternalThread;
 
 	public:
@@ -21,7 +23,7 @@ public:
 
 		inline bool isActive() const { return _active; }
 		OF_DEPRECATED_MSG("Use isActive insted.", bool active() const);
-		
+
 		const ofMatrix4x4& getMatrix() const { return matrix; }
 
 	private:
@@ -30,7 +32,11 @@ public:
 	};
 
 	ofxNatNet()
-		: thread(NULL) {}
+		: thread(NULL)
+		, frame_number(0)
+		, latency(0)
+	{
+	}
 	~ofxNatNet() { dispose(); }
 
 	void setup(string interface_name, string target_host,
@@ -58,19 +64,23 @@ public:
 	inline const Marker& getMarker(size_t index) { return markers[index]; }
 
 	inline const size_t getNumFilterdMarker() { return filterd_markers.size(); }
-	inline const Marker& getFilterdMarker(size_t index) {
+	inline const Marker& getFilterdMarker(size_t index)
+	{
 		return filterd_markers[index];
 	}
 
 	inline const size_t getNumRigidBody() { return rigidbodies.size(); }
-	inline const RigidBody& getRigidBodyAt(int index) {
+	inline const RigidBody& getRigidBodyAt(int index)
+	{
 		return *rigidbodies_arr[index];
 	}
 
-	inline const bool hasRigidBody(int id) {
+	inline const bool hasRigidBody(int id)
+	{
 		return rigidbodies.find(id) != rigidbodies.end();
 	}
-	inline const bool getRigidBody(int id, RigidBody& RB) {
+	inline const bool getRigidBody(int id, RigidBody& RB)
+	{
 		if (!hasRigidBody(id)) return false;
 		RB = rigidbodies[id];
 		return true;
@@ -82,6 +92,7 @@ public:
 	void forceSetNatNetVersion(int v);
 
 	void debugDraw();
+	void debugDrawInformation();
 	void debugDrawMarkers();
 
 protected:
