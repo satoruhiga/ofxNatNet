@@ -135,7 +135,8 @@ struct ofxNatNet::InternalThread : public ofThread {
 			startThread();
 
 			sendPing();
-		} catch (std::exception &e) {
+		}
+		catch (std::exception &e) {
 			ofLogError("ofxNatNet") << e.what();
 			error_str = e.what();
 		}
@@ -163,7 +164,7 @@ struct ofxNatNet::InternalThread : public ofThread {
 
 		while (isThreadRunning()) {
 			float t = ofGetElapsedTimef();
-			
+
 			if (data_socket.poll(timeout, Poco::Net::Socket::SELECT_READ)) {
 				try {
 					Packet packet;
@@ -180,19 +181,20 @@ struct ofxNatNet::InternalThread : public ofThread {
 						data_rate += (r - data_rate) * 0.1;
 						last_packet_received = t;
 					}
-				} catch (Poco::Exception &exc) {
+				}
+				catch (Poco::Exception &exc) {
 					ofLogError("ofxNatNet")
 						<< "udp socket error: " << exc.displayText();
 				}
 			}
-			
+
 			float target_time = t - buffer_time;
 			while (buffer.size()) {
 				Packet &packet = buffer.front();
 				if (packet.timestamp >= target_time) {
 					break;
 				}
-				
+
 				dataPacketReceiverd(packet.packet);
 				buffer.pop();
 			}
@@ -204,7 +206,8 @@ struct ofxNatNet::InternalThread : public ofThread {
 														sizeof(sPacket));
 
 					if (n > 0) commandPacketReceived(packet);
-				} catch (Poco::Exception &exc) {
+				}
+				catch (Poco::Exception &exc) {
 					ofLogError("ofxNatNet")
 						<< "udp socket error: " << exc.displayText();
 				}
@@ -248,7 +251,7 @@ struct ofxNatNet::InternalThread : public ofThread {
 	void Unpack(char *pData) {
 		int major = NatNetVersion[0];
 		int minor = NatNetVersion[1];
-		
+
 		if (major == 0 && minor == 0) return;
 
 		ofQuaternion rot = transform.getRotate();
@@ -302,8 +305,6 @@ struct ofxNatNet::InternalThread : public ofThread {
 			memcpy(&nOtherMarkers, ptr, 4);
 			ptr += 4;
 
-			markers.resize(nOtherMarkers);
-
 			for (int j = 0; j < nOtherMarkers; j++) {
 				float x = 0.0f;
 				memcpy(&x, ptr, 4);
@@ -318,10 +319,8 @@ struct ofxNatNet::InternalThread : public ofThread {
 				ofVec3f pp(x, y, z);
 				pp = transform.preMult(pp);
 
-				markers[j] = pp;
+				markers.push_back(pp);
 			}
-
-			filterd_markers = markers;
 
 			// rigid bodies
 			int nRigidBodies = 0;
@@ -342,28 +341,28 @@ struct ofxNatNet::InternalThread : public ofThread {
 
 				memcpy(&pp.x, ptr, 4);
 				ptr += 4;
-				
+
 				memcpy(&pp.y, ptr, 4);
 				ptr += 4;
-				
+
 				memcpy(&pp.z, ptr, 4);
 				ptr += 4;
-				
+
 				memcpy(&q.x(), ptr, 4);
 				ptr += 4;
-				
+
 				memcpy(&q.y(), ptr, 4);
 				ptr += 4;
-				
+
 				memcpy(&q.z(), ptr, 4);
 				ptr += 4;
-				
+
 				memcpy(&q.w(), ptr, 4);
 				ptr += 4;
 
 				RB.id = ID;
 				RB.raw_position = pp;
-				
+
 				pp = transform.preMult(pp);
 
 				ofMatrix4x4 mat;
@@ -400,7 +399,6 @@ struct ofxNatNet::InternalThread : public ofThread {
 
 					ofVec3f pp(x, y, z);
 					pp = transform.preMult(pp);
-
 					RB.markers[k] = pp;
 				}
 
@@ -413,8 +411,104 @@ struct ofxNatNet::InternalThread : public ofThread {
 					ptr += 4;
 
 					RB.mean_marker_error = fError;
+					RB._active = RB.mean_marker_error > 0;
+				} else {
+					RB.mean_marker_error = 0;
 				}
+				
 			}  // next rigid body
+
+			if (((major == 2) && (minor > 0)) || (major > 2)) {
+				int nSkeletons = 0;
+				memcpy(&nSkeletons, ptr, 4);
+				ptr += 4;
+
+				for (int j = 0; j < nSkeletons; j++) {
+					int skeletonID = 0;
+					memcpy(&skeletonID, ptr, 4);
+					ptr += 4;
+
+					int nRigidBodies = 0;
+					memcpy(&nRigidBodies, ptr, 4);
+					ptr += 4;
+
+					for (int k = 0; k < nRigidBodies; k++) {
+
+						int ID = 0;
+						memcpy(&ID, ptr, 4);
+						ptr += 4;
+						float x = 0.0f;
+						memcpy(&x, ptr, 4);
+						ptr += 4;
+						float y = 0.0f;
+						memcpy(&y, ptr, 4);
+						ptr += 4;
+						float z = 0.0f;
+						memcpy(&z, ptr, 4);
+						ptr += 4;
+						float qx = 0;
+						memcpy(&qx, ptr, 4);
+						ptr += 4;
+						float qy = 0;
+						memcpy(&qy, ptr, 4);
+						ptr += 4;
+						float qz = 0;
+						memcpy(&qz, ptr, 4);
+						ptr += 4;
+						float qw = 0;
+						memcpy(&qw, ptr, 4);
+						ptr += 4;
+
+						int nRigidMarkers = 0;
+						memcpy(&nRigidMarkers, ptr, 4);
+						ptr += 4;
+						int nBytes = nRigidMarkers * 3 * sizeof(float);
+						ptr += nBytes;
+
+						ptr += nRigidMarkers * sizeof(int);
+						ptr += nRigidMarkers * sizeof(float);
+
+						float fError = 0.0f;
+						memcpy(&fError, ptr, 4);
+						ptr += 4;
+					}
+				}
+			}
+
+			if (((major == 2) && (minor >= 3)) || (major > 2)) {
+				int nLabeledMarkers = 0;
+				memcpy(&nLabeledMarkers, ptr, 4);
+				ptr += 4;
+				for (int j = 0; j < nLabeledMarkers; j++) {
+					// id
+					int ID = 0;
+					memcpy(&ID, ptr, 4);
+					ptr += 4;
+					// x
+					float x = 0.0f;
+					memcpy(&x, ptr, 4);
+					ptr += 4;
+					// y
+					float y = 0.0f;
+					memcpy(&y, ptr, 4);
+					ptr += 4;
+					// z
+					float z = 0.0f;
+					memcpy(&z, ptr, 4);
+					ptr += 4;
+					// size
+					float size = 0.0f;
+					memcpy(&size, ptr, 4);
+					ptr += 4;
+
+					if (size == 0) continue;
+
+					ofVec3f pp(x, y, z);
+					pp = transform.preMult(pp);
+
+					markers.push_back(pp);
+				}
+			}
 
 			// latency
 			memcpy(&latency, ptr, 4);
@@ -426,6 +520,8 @@ struct ofxNatNet::InternalThread : public ofThread {
 			int eod = 0;
 			memcpy(&eod, ptr, 4);
 			ptr += 4;
+
+			filterd_markers = markers;
 
 			// filter markers
 			if (duplicated_point_removal_distance > 0) {
@@ -457,16 +553,7 @@ struct ofxNatNet::InternalThread : public ofThread {
 					for (int i = 0; i < rigidbodies.size(); i++) {
 						RigidBody &RB = rigidbodies[i];
 						RigidBody &tRB = this->rigidbodies[RB.id];
-						ofMatrix4x4 &m = RB.matrix;
-
-						bool found = isnormal(m(3, 0)) && isnormal(m(3, 1)) &&
-									 isnormal(m(3, 2));
-
-						if (found) {
-							bool active = tRB.raw_position != RB.raw_position;
-							tRB = RB;
-							tRB._active = active;
-						}
+						tRB = RB;
 					}
 				}
 
@@ -784,5 +871,3 @@ void ofxNatNet::debugDraw() {
 	ofPopView();
 	ofPopStyle();
 }
-
-
