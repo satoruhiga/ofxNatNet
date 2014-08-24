@@ -281,7 +281,7 @@ struct ofxNatNet::InternalThread : public ofThread
 	{
 		int major = NatNetVersion[0];
 		int minor = NatNetVersion[1];
-
+		
 		if (major == 0 && minor == 0) return;
 
 		ofQuaternion rot = transform.getRotate();
@@ -354,7 +354,7 @@ struct ofxNatNet::InternalThread : public ofThread
 				ofVec3f pp(x, y, z);
 				pp = transform.preMult(pp);
 
-				markers.push_back(pp);
+				markers[j] = pp;
 			}
 
 			// rigid bodies
@@ -411,8 +411,6 @@ struct ofxNatNet::InternalThread : public ofThread
 				memcpy(&nRigidMarkers, ptr, 4);
 				ptr += 4;
 
-				RB.markers.resize(nRigidMarkers);
-
 				int nBytes = nRigidMarkers * 3 * sizeof(float);
 				float* markerData = (float*)malloc(nBytes);
 				memcpy(markerData, ptr, nBytes);
@@ -427,8 +425,19 @@ struct ofxNatNet::InternalThread : public ofThread
 					// associated marker sizes
 					nBytes = nRigidMarkers * sizeof(float);
 					ptr += nBytes;
+					
+					// 2.6 and later
+					if( ((major == 2)&&(minor >= 6)) || (major > 2) || (major == 0) )
+					{
+						// params
+						short params = 0; memcpy(&params, ptr, 2); ptr += 2;
+						bool bTrackingValid = params & 0x01; // 0x01 : rigid body was successfully tracked in this frame
+					}
+
 				}
 
+				RB.markers.resize(nRigidMarkers);
+				
 				for (int k = 0; k < nRigidMarkers; k++)
 				{
 					float x = markerData[k * 3];
@@ -514,6 +523,7 @@ struct ofxNatNet::InternalThread : public ofThread
 				}
 			}
 
+			// labeled markers (version 2.3 and later)
 			if (((major == 2) && (minor >= 3)) || (major > 2)) {
 				int nLabeledMarkers = 0;
 				memcpy(&nLabeledMarkers, ptr, 4);
@@ -540,7 +550,15 @@ struct ofxNatNet::InternalThread : public ofThread
 					memcpy(&size, ptr, 4);
 					ptr += 4;
 
-					if (size == 0) continue;
+					// 2.6 and later
+					if( ((major == 2)&&(minor >= 6)) || (major > 2) || (major == 0) )
+					{
+						// marker params
+						short params = 0; memcpy(&params, ptr, 2); ptr += 2;
+						bool bOccluded = params & 0x01;     // marker was not visible (occluded) in this frame
+						bool bPCSolved = params & 0x02;     // position provided by point cloud solve
+						bool bModelSolved = params & 0x04;  // position provided by model solve
+					}
 
 					ofVec3f pp(x, y, z);
 					pp = transform.preMult(pp);
