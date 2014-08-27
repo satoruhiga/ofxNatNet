@@ -57,7 +57,6 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	int command_port;
 
-	Poco::Net::DatagramSocket command_socket;
 	Poco::Net::MulticastSocket data_socket;
 
 	int NatNetVersion[4];
@@ -117,22 +116,6 @@ struct ofxNatNet::InternalThread : public ofThread
 				assert(data_socket.getReceiveBufferSize() == 0x100000);
 			}
 
-			{
-				Poco::Net::SocketAddress address(
-					Poco::Net::IPAddress::wildcard(), command_port);
-				command_socket.bind(address, true);
-
-				command_socket.setReceiveBufferSize(0x100000);
-				assert(command_socket.getReceiveBufferSize() == 0x100000);
-			}
-
-			{
-				Poco::Net::SocketAddress address(target_host, command_port);
-				command_socket.connect(address);
-
-				command_socket.setSendBufferSize(0x100000);
-				assert(command_socket.getSendBufferSize() == 0x100000);
-			}
 
 			for (int i = 0; i < 4; i++)
 			{
@@ -220,22 +203,6 @@ struct ofxNatNet::InternalThread : public ofThread
 				buffer.pop();
 			}
 
-			if (command_socket.poll(timeout, Poco::Net::Socket::SELECT_READ))
-			{
-				try
-				{
-					sPacket packet;
-					int n = command_socket.receiveBytes((char*)&packet,
-														sizeof(sPacket));
-
-					if (n > 0) commandPacketReceived(packet);
-				}
-				catch (Poco::Exception& exc)
-				{
-					ofLogError("ofxNatNet")
-						<< "udp socket error: " << exc.displayText();
-				}
-			}
 
 			ofSleepMillis(1);
 		}
@@ -248,6 +215,26 @@ struct ofxNatNet::InternalThread : public ofThread
 		ping_packet.nDataBytes = 0;
 
 		connected = false;
+		
+		Poco::Timespan timeout(100 * 1000);
+		Poco::Net::DatagramSocket command_socket;
+		
+		{
+			Poco::Net::SocketAddress address(
+											 Poco::Net::IPAddress::wildcard(), command_port);
+			command_socket.bind(address, true);
+			
+			command_socket.setReceiveBufferSize(0x100000);
+			assert(command_socket.getReceiveBufferSize() == 0x100000);
+		}
+		
+		{
+			Poco::Net::SocketAddress address(target_host, command_port);
+			command_socket.connect(address);
+			
+			command_socket.setSendBufferSize(0x100000);
+			assert(command_socket.getSendBufferSize() == 0x100000);
+		}
 
 		for (int i = 0; i < 3; i++)
 		{
@@ -255,27 +242,37 @@ struct ofxNatNet::InternalThread : public ofThread
 				&ping_packet, 4 + ping_packet.nDataBytes);
 			if (n > 0 && connected) break;
 
-			sleep(100);
+			if (command_socket.poll(timeout, Poco::Net::Socket::SELECT_READ))
+			{
+				try
+				{
+					sPacket packet;
+					int n = command_socket.receiveBytes((char*)&packet,
+														sizeof(sPacket));
+					
+					if (n > 0 && packet.iMessage == NAT_PINGRESPONSE)
+					{
+						connected = true;
+						
+						for (int i = 0; i < 4; i++)
+						{
+							NatNetVersion[i] = (int)packet.Data.Sender.NatNetVersion[i];
+							ServerVersion[i] = (int)packet.Data.Sender.Version[i];
+						}
+					}
+				}
+				catch (Poco::Exception& exc)
+				{
+					ofLogError("ofxNatNet")
+					<< "udp socket error: " << exc.displayText();
+				}
+			}
 
 			ofLogWarning("ofxNatNet") << "No route to host count: " << i;
 		}
 	}
 
 	void dataPacketReceiverd(sPacket& packet) { Unpack((char*)&packet); }
-
-	void commandPacketReceived(sPacket& packet)
-	{
-		if (packet.iMessage == NAT_PINGRESPONSE)
-		{
-			connected = true;
-
-			for (int i = 0; i < 4; i++)
-			{
-				NatNetVersion[i] = (int)packet.Data.Sender.NatNetVersion[i];
-				ServerVersion[i] = (int)packet.Data.Sender.Version[i];
-			}
-		}
-	}
 
 	void Unpack(char* pData)
 	{
