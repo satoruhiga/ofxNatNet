@@ -67,13 +67,13 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	float buffer_time;
 	queue<Packet> buffer;
-
+	
 	vector<ofxNatNet::Marker> markers;
 	vector<ofxNatNet::Marker> filterd_markers;
 
 	map<int, ofxNatNet::RigidBody> rigidbodies;
 
-	float last_packet_received;
+	float last_packet_arrival_time;
 	float data_rate;
 
 	ofMatrix4x4 transform;
@@ -90,7 +90,7 @@ struct ofxNatNet::InternalThread : public ofThread
 		, frame_number(0)
 		, latency(0)
 		, buffer_time(0)
-		, last_packet_received(0)
+		, last_packet_arrival_time(0)
 		, data_rate(0)
 		, duplicated_point_removal_distance(0)
 	{
@@ -176,11 +176,11 @@ struct ofxNatNet::InternalThread : public ofThread
 						packet.timestamp = t;
 						buffer.push(packet);
 
-						float d = t - last_packet_received;
+						float d = t - last_packet_arrival_time;
 						float r = (1. / d);
 
 						data_rate += (r - data_rate) * 0.1;
-						last_packet_received = t;
+						last_packet_arrival_time = t;
 					}
 				}
 				catch (Poco::Exception& exc)
@@ -271,8 +271,11 @@ struct ofxNatNet::InternalThread : public ofThread
 			ofLogWarning("ofxNatNet") << "No route to host count: " << i;
 		}
 	}
-
-	void dataPacketReceiverd(sPacket& packet) { Unpack((char*)&packet); }
+	
+	void dataPacketReceiverd(sPacket& packet)
+	{
+		Unpack((char*)&packet);
+	}
 
 	void Unpack(char* pData)
 	{
@@ -792,19 +795,30 @@ void ofxNatNet::update()
 	{
 		frame_number = thread->frame_number;
 		latency = thread->latency;
-		markers = thread->markers;
-		filterd_markers = thread->filterd_markers;
-
+		
+		if (isConnected())
 		{
-			rigidbodies = thread->rigidbodies;
-			rigidbodies_arr.clear();
-
-			map<int, RigidBody>::iterator it = thread->rigidbodies.begin();
-			while (it != thread->rigidbodies.end())
+			markers = thread->markers;
+			filterd_markers = thread->filterd_markers;
+			
 			{
-				rigidbodies_arr.push_back(&it->second);
-				it++;
+				rigidbodies = thread->rigidbodies;
+				rigidbodies_arr.clear();
+				
+				map<int, RigidBody>::iterator it = thread->rigidbodies.begin();
+				while (it != thread->rigidbodies.end())
+				{
+					rigidbodies_arr.push_back(&it->second);
+					it++;
+				}
 			}
+		}
+		else
+		{
+			markers.clear();
+			filterd_markers.clear();
+			rigidbodies.clear();
+			rigidbodies_arr.clear();
 		}
 
 		thread->unlock();
@@ -814,13 +828,20 @@ void ofxNatNet::update()
 bool ofxNatNet::isConnected()
 {
 	if (!thread) return false;
-	return thread->connected;
+	return thread->connected
+		&& (ofGetElapsedTimef() - thread->last_packet_arrival_time) < this->timeout;
 }
 
 float ofxNatNet::getDataRate()
 {
 	if (!thread) return 0;
 	return thread->data_rate;
+}
+
+float ofxNatNet::getLastPacketArraivalTime()
+{
+	if (!thread) return 0;
+	return thread->last_packet_arrival_time;
 }
 
 void ofxNatNet::setScale(float v)
@@ -852,6 +873,11 @@ int ofxNatNet::getBufferTime()
 {
 	assert(thread);
 	return thread->buffer_time;
+}
+
+void ofxNatNet::setTimeout(float timeout)
+{
+	this->timeout = timeout;
 }
 
 void ofxNatNet::forceSetNatNetVersion(int v)

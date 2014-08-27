@@ -35,6 +35,7 @@ public:
 		: thread(NULL)
 		, frame_number(0)
 		, latency(0)
+		, timeout(0.1)
 	{
 	}
 	~ofxNatNet() { dispose(); }
@@ -51,6 +52,7 @@ public:
 	float getLatency() { return latency; }
 
 	float getDataRate();
+	float getLastPacketArraivalTime();
 
 	void setScale(float v);
 	ofVec3f getScale();
@@ -88,6 +90,8 @@ public:
 
 	void setBufferTime(float sec);
 	int getBufferTime();
+	
+	void setTimeout(float timeout);
 
 	void forceSetNatNetVersion(int v);
 
@@ -100,7 +104,8 @@ protected:
 
 	int frame_number;
 	float latency;
-
+	float timeout;
+	
 	vector<Marker> filterd_markers;
 	vector<Marker> markers;
 
