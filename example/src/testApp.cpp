@@ -76,7 +76,7 @@ void testApp::draw() {
 		}
 	}
 	
-	// draw skeltons
+	// draw skeletons
 	for (int j = 0;  j < natnet.getNumSkeleton(); j++) {
 		const ofxNatNet::Skeleton &S = natnet.getSkeletonAt(j);
 		ofSetColor(0, 0, 255);
