@@ -72,6 +72,9 @@ struct ofxNatNet::InternalThread : public ofThread
 	vector<ofxNatNet::Marker> filterd_markers;
 
 	map<int, ofxNatNet::RigidBody> rigidbodies;
+	
+	vector<vector<ofxNatNet::Marker> > markers_set;
+	map<int, ofxNatNet::Skeleton> skeletons;
 
 	float last_packet_arrival_time;
 	float data_rate;
@@ -276,7 +279,154 @@ struct ofxNatNet::InternalThread : public ofThread
 	{
 		Unpack((char*)&packet);
 	}
+	
+	char* unpackMarkerSet(char* ptr, vector<Marker>& markers)
+	{
+		int nMarkers = 0;
+		memcpy(&nMarkers, ptr, 4);
+		ptr += 4;
+		
+		markers.resize(nMarkers);
+		
+		for (int j = 0; j < nMarkers; j++)
+		{
+			float x = 0.0f;
+			memcpy(&x, ptr, 4);
+			ptr += 4;
+			float y = 0.0f;
+			memcpy(&y, ptr, 4);
+			ptr += 4;
+			float z = 0.0f;
+			memcpy(&z, ptr, 4);
+			ptr += 4;
+			
+			ofVec3f pp(x, y, z);
+			pp = transform.preMult(pp);
+			
+			markers[j] = pp;
+		}
+		
+		return ptr;
+	}
 
+	char* unpackRigidBodies(char* ptr, vector<RigidBody>& rigidbodies)
+	{
+		int major = NatNetVersion[0];
+		int minor = NatNetVersion[1];
+		
+		ofQuaternion rot = transform.getRotate();
+
+		int nRigidBodies = 0;
+		memcpy(&nRigidBodies, ptr, 4);
+		ptr += 4;
+		
+		rigidbodies.resize(nRigidBodies);
+		
+		for (int j = 0; j < nRigidBodies; j++)
+		{
+			ofxNatNet::RigidBody& RB = rigidbodies[j];
+			
+			ofVec3f pp;
+			ofQuaternion q;
+			
+			int ID = 0;
+			memcpy(&ID, ptr, 4);
+			ptr += 4;
+			
+			memcpy(&pp.x, ptr, 4);
+			ptr += 4;
+			
+			memcpy(&pp.y, ptr, 4);
+			ptr += 4;
+			
+			memcpy(&pp.z, ptr, 4);
+			ptr += 4;
+			
+			memcpy(&q.x(), ptr, 4);
+			ptr += 4;
+			
+			memcpy(&q.y(), ptr, 4);
+			ptr += 4;
+			
+			memcpy(&q.z(), ptr, 4);
+			ptr += 4;
+			
+			memcpy(&q.w(), ptr, 4);
+			ptr += 4;
+			
+			RB.id = ID;
+			RB.raw_position = pp;
+			
+			pp = transform.preMult(pp);
+			
+			ofMatrix4x4 mat;
+			mat.setTranslation(pp);
+			mat.setRotate(q * rot);
+			RB.matrix = mat;
+			
+			// associated marker positions
+			int nRigidMarkers = 0;
+			memcpy(&nRigidMarkers, ptr, 4);
+			ptr += 4;
+			
+			int nBytes = nRigidMarkers * 3 * sizeof(float);
+			float* markerData = (float*)malloc(nBytes);
+			memcpy(markerData, ptr, nBytes);
+			ptr += nBytes;
+			
+			if (major >= 2)
+			{
+				// associated marker IDs
+				nBytes = nRigidMarkers * sizeof(int);
+				ptr += nBytes;
+				
+				// associated marker sizes
+				nBytes = nRigidMarkers * sizeof(float);
+				ptr += nBytes;
+				
+				// 2.6 and later
+				if( ((major == 2)&&(minor >= 6)) || (major > 2) || (major == 0) )
+				{
+					// params
+					short params = 0; memcpy(&params, ptr, 2); ptr += 2;
+					bool bTrackingValid = params & 0x01; // 0x01 : rigid body was successfully tracked in this frame
+				}
+				
+			}
+			
+			RB.markers.resize(nRigidMarkers);
+			
+			for (int k = 0; k < nRigidMarkers; k++)
+			{
+				float x = markerData[k * 3];
+				float y = markerData[k * 3 + 1];
+				float z = markerData[k * 3 + 2];
+				
+				ofVec3f pp(x, y, z);
+				pp = transform.preMult(pp);
+				RB.markers[k] = pp;
+			}
+			
+			if (markerData) free(markerData);
+			
+			if (major >= 2)
+			{
+				// Mean marker error
+				float fError = 0.0f;
+				memcpy(&fError, ptr, 4);
+				ptr += 4;
+				
+				RB.mean_marker_error = fError;
+				RB._active = RB.mean_marker_error > 0;
+			} else {
+				RB.mean_marker_error = 0;
+			}
+			
+		}  // next rigid body
+		
+		return ptr;
+	}
+	
 	void Unpack(char* pData)
 	{
 		int major = NatNetVersion[0];
@@ -303,6 +453,8 @@ struct ofxNatNet::InternalThread : public ofThread
 			int frame_number = 0;
 			float latency = 0;
 
+			vector<vector<Marker> > markers_set;
+			vector<Skeleton> skeletons;
 			vector<Marker> markers;
 			vector<Marker> filterd_markers;
 			vector<RigidBody> rigidbodies;
@@ -315,6 +467,9 @@ struct ofxNatNet::InternalThread : public ofThread
 			int nMarkerSets = 0;
 			memcpy(&nMarkerSets, ptr, 4);
 			ptr += 4;
+			
+			markers_set.resize(nMarkerSets);
+			
 			for (int i = 0; i < nMarkerSets; i++)
 			{
 				// Markerset name
@@ -322,204 +477,31 @@ struct ofxNatNet::InternalThread : public ofThread
 				strcpy(szName, ptr);
 				int nDataBytes = (int)strlen(szName) + 1;
 				ptr += nDataBytes;
-
-				int nMarkers = 0;
-				memcpy(&nMarkers, ptr, 4);
-				ptr += 4;
-				for (int j = 0; j < nMarkers; j++)
-				{
-					ptr += 12;
-				}
+				
+				ptr = unpackMarkerSet(ptr, markers_set[i]);
 			}
 
 			// unidentified markers
-			int nOtherMarkers = 0;
-			memcpy(&nOtherMarkers, ptr, 4);
-			ptr += 4;
-
-			markers.resize(nOtherMarkers);
-
-			for (int j = 0; j < nOtherMarkers; j++)
-			{
-				float x = 0.0f;
-				memcpy(&x, ptr, 4);
-				ptr += 4;
-				float y = 0.0f;
-				memcpy(&y, ptr, 4);
-				ptr += 4;
-				float z = 0.0f;
-				memcpy(&z, ptr, 4);
-				ptr += 4;
-
-				ofVec3f pp(x, y, z);
-				pp = transform.preMult(pp);
-
-				markers[j] = pp;
-			}
+			ptr = unpackMarkerSet(ptr, markers);
 
 			// rigid bodies
-			int nRigidBodies = 0;
-			memcpy(&nRigidBodies, ptr, 4);
-			ptr += 4;
-
-			rigidbodies.resize(nRigidBodies);
-
-			for (int j = 0; j < nRigidBodies; j++)
-			{
-				ofxNatNet::RigidBody& RB = rigidbodies[j];
-
-				ofVec3f pp;
-				ofQuaternion q;
-
-				int ID = 0;
-				memcpy(&ID, ptr, 4);
-				ptr += 4;
-
-				memcpy(&pp.x, ptr, 4);
-				ptr += 4;
-
-				memcpy(&pp.y, ptr, 4);
-				ptr += 4;
-
-				memcpy(&pp.z, ptr, 4);
-				ptr += 4;
-
-				memcpy(&q.x(), ptr, 4);
-				ptr += 4;
-
-				memcpy(&q.y(), ptr, 4);
-				ptr += 4;
-
-				memcpy(&q.z(), ptr, 4);
-				ptr += 4;
-
-				memcpy(&q.w(), ptr, 4);
-				ptr += 4;
-
-				RB.id = ID;
-				RB.raw_position = pp;
-
-				pp = transform.preMult(pp);
-
-				ofMatrix4x4 mat;
-				mat.setTranslation(pp);
-				mat.setRotate(q * rot);
-				RB.matrix = mat;
-
-				// associated marker positions
-				int nRigidMarkers = 0;
-				memcpy(&nRigidMarkers, ptr, 4);
-				ptr += 4;
-
-				int nBytes = nRigidMarkers * 3 * sizeof(float);
-				float* markerData = (float*)malloc(nBytes);
-				memcpy(markerData, ptr, nBytes);
-				ptr += nBytes;
-
-				if (major >= 2)
-				{
-					// associated marker IDs
-					nBytes = nRigidMarkers * sizeof(int);
-					ptr += nBytes;
-
-					// associated marker sizes
-					nBytes = nRigidMarkers * sizeof(float);
-					ptr += nBytes;
-					
-					// 2.6 and later
-					if( ((major == 2)&&(minor >= 6)) || (major > 2) || (major == 0) )
-					{
-						// params
-						short params = 0; memcpy(&params, ptr, 2); ptr += 2;
-						bool bTrackingValid = params & 0x01; // 0x01 : rigid body was successfully tracked in this frame
-					}
-
-				}
-
-				RB.markers.resize(nRigidMarkers);
-				
-				for (int k = 0; k < nRigidMarkers; k++)
-				{
-					float x = markerData[k * 3];
-					float y = markerData[k * 3 + 1];
-					float z = markerData[k * 3 + 2];
-
-					ofVec3f pp(x, y, z);
-					pp = transform.preMult(pp);
-					RB.markers[k] = pp;
-				}
-
-				if (markerData) free(markerData);
-
-				if (major >= 2)
-				{
-					// Mean marker error
-					float fError = 0.0f;
-					memcpy(&fError, ptr, 4);
-					ptr += 4;
-
-					RB.mean_marker_error = fError;
-					RB._active = RB.mean_marker_error > 0;
-				} else {
-					RB.mean_marker_error = 0;
-				}
-				
-			}  // next rigid body
+			ptr = unpackRigidBodies(ptr, rigidbodies);
 
 			if (((major == 2) && (minor > 0)) || (major > 2)) {
 				int nSkeletons = 0;
 				memcpy(&nSkeletons, ptr, 4);
 				ptr += 4;
+				
+				skeletons.resize(nSkeletons);
 
 				for (int j = 0; j < nSkeletons; j++) {
 					int skeletonID = 0;
 					memcpy(&skeletonID, ptr, 4);
 					ptr += 4;
-
-					int nRigidBodies = 0;
-					memcpy(&nRigidBodies, ptr, 4);
-					ptr += 4;
-
-					for (int k = 0; k < nRigidBodies; k++) {
-
-						int ID = 0;
-						memcpy(&ID, ptr, 4);
-						ptr += 4;
-						float x = 0.0f;
-						memcpy(&x, ptr, 4);
-						ptr += 4;
-						float y = 0.0f;
-						memcpy(&y, ptr, 4);
-						ptr += 4;
-						float z = 0.0f;
-						memcpy(&z, ptr, 4);
-						ptr += 4;
-						float qx = 0;
-						memcpy(&qx, ptr, 4);
-						ptr += 4;
-						float qy = 0;
-						memcpy(&qy, ptr, 4);
-						ptr += 4;
-						float qz = 0;
-						memcpy(&qz, ptr, 4);
-						ptr += 4;
-						float qw = 0;
-						memcpy(&qw, ptr, 4);
-						ptr += 4;
-
-						int nRigidMarkers = 0;
-						memcpy(&nRigidMarkers, ptr, 4);
-						ptr += 4;
-						int nBytes = nRigidMarkers * 3 * sizeof(float);
-						ptr += nBytes;
-
-						ptr += nRigidMarkers * sizeof(int);
-						ptr += nRigidMarkers * sizeof(float);
-
-						float fError = 0.0f;
-						memcpy(&fError, ptr, 4);
-						ptr += 4;
-					}
+					
+					skeletons[j].id = skeletonID;
+					
+					ptr = unpackRigidBodies(ptr, skeletons[j].joints);
 				}
 			}
 
@@ -607,6 +589,7 @@ struct ofxNatNet::InternalThread : public ofThread
 			{
 				this->latency = latency;
 				this->frame_number = frame_number;
+				this->markers_set = markers_set;
 				this->markers = markers;
 				this->filterd_markers = filterd_markers;
 
@@ -615,6 +598,13 @@ struct ofxNatNet::InternalThread : public ofThread
 						RigidBody &RB = rigidbodies[i];
 						RigidBody &tRB = this->rigidbodies[RB.id];
 						tRB = RB;
+					}
+				}
+				{
+					for (int i = 0; i < skeletons.size(); i++) {
+						Skeleton &S = skeletons[i];
+						Skeleton &tS = this->skeletons[S.id];
+						tS = S;
 					}
 				}
 
@@ -798,6 +788,7 @@ void ofxNatNet::update()
 		
 		if (isConnected())
 		{
+			markers_set = thread->markers_set;
 			markers = thread->markers;
 			filterd_markers = thread->filterd_markers;
 			
@@ -812,13 +803,27 @@ void ofxNatNet::update()
 					it++;
 				}
 			}
+			{
+				skeletons = thread->skeletons;
+				skeletons_arr.clear();
+				
+				map<int, Skeleton>::iterator it = thread->skeletons.begin();
+				while (it != thread->skeletons.end())
+				{
+					skeletons_arr.push_back(&it->second);
+					it++;
+				}
+			}
 		}
 		else
 		{
+			markers_set.clear();
 			markers.clear();
 			filterd_markers.clear();
 			rigidbodies.clear();
 			rigidbodies_arr.clear();
+			skeletons.clear();
+			skeletons_arr.clear();
 		}
 
 		thread->unlock();
@@ -949,6 +954,20 @@ void ofxNatNet::debugDrawMarkers()
 			ofDrawBox(RB.markers[n], 5);
 		}
 	}
+	
+	// draw skeletons
+	for (int j = 0;  j < getNumSkeleton(); j++) {
+		const ofxNatNet::Skeleton &S = getSkeletonAt(j);
+		ofSetColor(255, 0, 255);
+		
+		for (int i = 0; i < S.joints.size(); i++) {
+			const ofxNatNet::RigidBody &RB = S.joints[i];
+			ofPushMatrix();
+			glMultMatrixf(RB.getMatrix().getPtr());
+			ofDrawBox(5);
+			ofPopMatrix();
+		}
+	}
 
 	ofPopStyle();
 }
@@ -966,6 +985,7 @@ void ofxNatNet::debugDrawInformation()
 	str += "num filterd (non rigidbodies) marker: " +
 	ofToString(getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(getNumRigidBody());
+	str += "num skeleton: " + ofToString(getNumSkeleton()) + "\n";
 	
 	ofDrawBitmapStringHighlight(str, 10, 20, ofColor(40), ofColor(255));
 	

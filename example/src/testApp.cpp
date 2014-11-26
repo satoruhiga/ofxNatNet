@@ -24,11 +24,19 @@ void testApp::draw() {
 	ofEnableAlphaBlending();
 
 	cam.begin();
-
+	
 	ofDrawAxis(100);
 
 	ofFill();
 
+	// draw all markers set
+	ofSetColor(255, 128);
+	for (int i = 0; i < max(0, (int)natnet.getNumMarkersSet() - 1); i++) {
+		for (int j = 0; j < natnet.getMarkersSetAt(i).size(); j++) {
+			ofDrawBox(natnet.getMarkersSetAt(i)[j], 3);
+		}
+	}
+	
 	// draw all markers
 	ofSetColor(255, 30);
 	for (int i = 0; i < natnet.getNumMarker(); i++) {
@@ -67,6 +75,20 @@ void testApp::draw() {
 			ofDrawBox(RB.markers[n], 5);
 		}
 	}
+	
+	// draw skeltons
+	for (int j = 0;  j < natnet.getNumSkeleton(); j++) {
+		const ofxNatNet::Skeleton &S = natnet.getSkeletonAt(j);
+		ofSetColor(0, 0, 255);
+		
+		for (int i = 0; i < S.joints.size(); i++) {
+			const ofxNatNet::RigidBody &RB = S.joints[i];
+			ofPushMatrix();
+			glMultMatrixf(RB.getMatrix().getPtr());
+			ofDrawBox(5);
+			ofPopMatrix();
+		}
+	}
 
 	cam.end();
 
@@ -74,10 +96,12 @@ void testApp::draw() {
 	str += "frames: " + ofToString(natnet.getFrameNumber()) + "\n";
 	str += "data rate: " + ofToString(natnet.getDataRate()) + "\n";
 	str += string("connected: ") + (natnet.isConnected() ? "YES" : "NO") + "\n";
+	str += "num markers set: " + ofToString(natnet.getNumMarkersSet()) + "\n";
 	str += "num marker: " + ofToString(natnet.getNumMarker()) + "\n";
 	str += "num filterd (non regidbodies) marker: " +
 		   ofToString(natnet.getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(natnet.getNumRigidBody()) + "\n";
+	str += "num skeleton: " + ofToString(natnet.getNumSkeleton()) + "\n";
 
 	ofSetColor(255);
 	ofDrawBitmapString(str, 10, 20);

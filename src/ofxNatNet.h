@@ -30,6 +30,13 @@ public:
 		bool _active;
 		ofVec3f raw_position;
 	};
+	
+	class Skeleton
+	{
+	public:
+		int id;
+		vector<RigidBody> joints;
+	};
 
 	ofxNatNet()
 		: thread(NULL)
@@ -62,6 +69,9 @@ public:
 
 	void setDuplicatedPointRemovalDistance(float v);
 
+	inline const size_t getNumMarkersSet() { return markers_set.size(); }
+	inline const vector<Marker>& getMarkersSetAt(size_t index) { return markers_set[index]; }
+	
 	inline const size_t getNumMarker() { return markers.size(); }
 	inline const Marker& getMarker(size_t index) { return markers[index]; }
 
@@ -87,6 +97,23 @@ public:
 		RB = rigidbodies[id];
 		return true;
 	}
+	
+	inline const size_t getNumSkeleton() { return skeletons.size(); }
+	inline const Skeleton& getSkeletonAt(int index)
+	{
+		return *skeletons_arr[index];
+	}
+	
+	inline const bool hasSkeleton(int id)
+	{
+		return skeletons.find(id) != skeletons.end();
+	}
+	inline const bool getSkeleton(int id, Skeleton& S)
+	{
+		if (!hasSkeleton(id)) return false;
+		S = skeletons[id];
+		return true;
+	}
 
 	void setBufferTime(float sec);
 	int getBufferTime();
@@ -106,11 +133,15 @@ protected:
 	float latency;
 	float timeout;
 	
+	vector<vector<Marker> > markers_set;
 	vector<Marker> filterd_markers;
 	vector<Marker> markers;
 
 	map<int, RigidBody> rigidbodies;
 	vector<RigidBody*> rigidbodies_arr;
+	
+	map<int, Skeleton> skeletons;
+	vector<Skeleton*> skeletons_arr;
 
 	void dispose();
 
