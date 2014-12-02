@@ -874,7 +874,7 @@ void ofxNatNet::setBufferTime(float sec)
 	thread->buffer_time = ofClamp(sec, 0, 10);
 }
 
-int ofxNatNet::getBufferTime()
+float ofxNatNet::getBufferTime()
 {
 	assert(thread);
 	return thread->buffer_time;
