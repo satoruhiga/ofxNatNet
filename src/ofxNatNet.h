@@ -116,7 +116,7 @@ public:
 	}
 
 	void setBufferTime(float sec);
-	int getBufferTime();
+	float getBufferTime();
 	
 	void setTimeout(float timeout);
 

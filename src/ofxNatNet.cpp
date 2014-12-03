@@ -874,7 +874,7 @@ void ofxNatNet::setBufferTime(float sec)
 	thread->buffer_time = ofClamp(sec, 0, 10);
 }
 
-int ofxNatNet::getBufferTime()
+float ofxNatNet::getBufferTime()
 {
 	assert(thread);
 	return thread->buffer_time;
@@ -984,8 +984,8 @@ void ofxNatNet::debugDrawInformation()
 	str += "num marker: " + ofToString(getNumMarker()) + "\n";
 	str += "num filterd (non rigidbodies) marker: " +
 	ofToString(getNumFilterdMarker()) + "\n";
-	str += "num rigidbody: " + ofToString(getNumRigidBody());
-	str += "num skeleton: " + ofToString(getNumSkeleton()) + "\n";
+	str += "num rigidbody: " + ofToString(getNumRigidBody()) + "\n";
+	str += "num skeleton: " + ofToString(getNumSkeleton());
 	
 	ofDrawBitmapStringHighlight(str, 10, 20, ofColor(40), ofColor(255));
 	
