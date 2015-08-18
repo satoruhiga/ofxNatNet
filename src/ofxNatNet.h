@@ -152,9 +152,6 @@ public:
 	void debugDrawInformation();
 	void debugDrawMarkers();
     
-    void requestPacket();
-    map<int, string> rigid_id_to_name;
-
 protected:
 	InternalThread* thread;
 
@@ -172,9 +169,9 @@ protected:
 	map<int, Skeleton> skeletons;
 	vector<Skeleton*> skeletons_arr;
 
-    vector<RigidBodyDescription> rigidbody_descs;
-    vector<SkeletonDescription> skeleton_descs;
-    vector<MarkerSetDescription> markerset_descs;
+	vector<RigidBodyDescription> rigidbody_descs;
+	vector<SkeletonDescription> skeleton_descs;
+	vector<MarkerSetDescription> markerset_descs;
     
 	void dispose();
 
