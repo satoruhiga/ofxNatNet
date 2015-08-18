@@ -76,6 +76,10 @@ struct ofxNatNet::InternalThread : public ofThread
 	vector<vector<ofxNatNet::Marker> > markers_set;
 	map<int, ofxNatNet::Skeleton> skeletons;
 
+    vector<RigidBodyDescription> rigidbody_descs;
+    vector<SkeletonDescription> skeleton_descs;
+    vector<MarkerSetDescription> markerset_descs;
+    
 	float last_packet_arrival_time;
 	float data_rate;
 
@@ -210,6 +214,38 @@ struct ofxNatNet::InternalThread : public ofThread
 			ofSleepMillis(1);
 		}
 	}
+    
+    void sendRequestDescription() {
+        sPacket packet;
+        packet.iMessage = NAT_REQUEST_MODELDEF;
+        packet.nDataBytes = 0;
+        
+        Poco::Timespan timeout(100 * 1000);
+        Poco::Net::DatagramSocket command_socket;
+        
+        {
+            Poco::Net::SocketAddress address(Poco::Net::IPAddress::wildcard(), command_port);
+            command_socket.bind(address, true);
+            command_socket.setReceiveBufferSize(0x100000);
+            assert(command_socket.getReceiveBufferSize() == 0x100000);
+        }
+        {
+            Poco::Net::SocketAddress address(target_host, command_port);
+            command_socket.connect(address);
+            
+            command_socket.setSendBufferSize(0x100000);
+            assert(command_socket.getSendBufferSize() == 0x100000);
+        }
+        for (int i = 0; i < 3; i++)
+        {
+            unsigned int n = command_socket.sendBytes(&packet, 4 + packet.nDataBytes);
+            
+            command_socket.receiveBytes((char*)&packet, sizeof(sPacket));
+            if (packet.nDataBytes > 0) {
+                Unpack((char*)&packet);
+            }
+        }
+    }
 
 	void sendPing()
 	{
@@ -613,39 +649,37 @@ struct ofxNatNet::InternalThread : public ofThread
 		}
 		else if (MessageID == 5)  // Data Descriptions
 		{
-			// TODO: impl description
+            int nDatasets = 0;
 
-			/*
+            vector<RigidBodyDescription> rigidbody_descs;
+            vector<SkeletonDescription> skeleton_descs;
+            vector<MarkerSetDescription> markerset_descs;
 
 			// number of datasets
-			int nDatasets = 0;
 			memcpy(&nDatasets, ptr, 4);
 			ptr += 4;
-			printf("Dataset Count : %d\n", nDatasets);
 
 			for (int i = 0; i < nDatasets; i++)
 			{
-				printf("Dataset %d\n", i);
-
 				int type = 0;
 				memcpy(&type, ptr, 4);
 				ptr += 4;
-				printf("Type : %d\n", i, type);
 
 				if (type == 0)   // markerset
 				{
+                    MarkerSetDescription description;
+                    
 					// name
 					char szName[256];
 					strcpy(szName, ptr);
 					int nDataBytes = (int)strlen(szName) + 1;
 					ptr += nDataBytes;
-					printf("Markerset Name: %s\n", szName);
+                    description.name = szName;
 
 					// marker data
 					int nMarkers = 0;
 					memcpy(&nMarkers, ptr, 4);
 					ptr += 4;
-					printf("Marker Count : %d\n", nMarkers);
 
 					for (int j = 0; j < nMarkers; j++)
 					{
@@ -653,62 +687,70 @@ struct ofxNatNet::InternalThread : public ofThread
 						strcpy(szName, ptr);
 						int nDataBytes = (int)strlen(szName) + 1;
 						ptr += nDataBytes;
-						printf("Marker Name: %s\n", szName);
+                        description.marker_names.push_back(szName);
 					}
+                    markerset_descs.push_back(description);
 				}
 				else if (type == 1)   // rigid body
 				{
+                    RigidBodyDescription description;
+                    
 					if (major >= 2)
 					{
 						// name
 						char szName[MAX_NAMELENGTH];
 						strcpy(szName, ptr);
 						ptr += strlen(ptr) + 1;
-						printf("Name: %s\n", szName);
+                        description.name = szName;
 					}
 
 					int ID = 0;
 					memcpy(&ID, ptr, 4);
 					ptr += 4;
-					printf("ID : %d\n", ID);
+                    description.id = ID;
 
 					int parentID = 0;
 					memcpy(&parentID, ptr, 4);
 					ptr += 4;
-					printf("Parent ID : %d\n", parentID);
+                    description.parent_id = parentID;
 
 					float xoffset = 0;
 					memcpy(&xoffset, ptr, 4);
 					ptr += 4;
-					printf("X Offset : %3.2f\n", xoffset);
 
 					float yoffset = 0;
 					memcpy(&yoffset, ptr, 4);
 					ptr += 4;
-					printf("Y Offset : %3.2f\n", yoffset);
 
 					float zoffset = 0;
 					memcpy(&zoffset, ptr, 4);
 					ptr += 4;
-					printf("Z Offset : %3.2f\n", zoffset);
 
+                    description.offset.x = xoffset;
+                    description.offset.y = yoffset;
+                    description.offset.z = zoffset;
+                    
+                    rigidbody_descs.push_back(description);
 				}
 				else if (type == 2)   // skeleton
 				{
+                    SkeletonDescription description;
+                    
 					char szName[MAX_NAMELENGTH];
 					strcpy(szName, ptr);
 					ptr += strlen(ptr) + 1;
-					printf("Name: %s\n", szName);
+                    description.name = szName;
 
 					int ID = 0;
 					memcpy(&ID, ptr, 4);
 					ptr += 4;
-					printf("ID : %d\n", ID);
+                    description.id = ID;
 
 					int nRigidBodies = 0;
 					memcpy(&nRigidBodies, ptr, 4);
 					ptr += 4;
-					printf("RigidBody (Bone) Count : %d\n", nRigidBodies);
+                    
+                    description.joints.resize(nRigidBodies);
 
 					for (int i = 0; i < nRigidBodies; i++)
 					{
@@ -718,39 +760,48 @@ struct ofxNatNet::InternalThread : public ofThread
 							char szName[MAX_NAMELENGTH];
 							strcpy(szName, ptr);
 							ptr += strlen(ptr) + 1;
-							printf("Rigid Body Name: %s\n", szName);
+                            description.joints[i].name = szName;
 						}
 
 						int ID = 0;
 						memcpy(&ID, ptr, 4);
 						ptr += 4;
-						printf("RigidBody ID : %d\n", ID);
+                        description.joints[i].id = ID;
 
 						int parentID = 0;
 						memcpy(&parentID, ptr, 4);
 						ptr += 4;
-						printf("Parent ID : %d\n", parentID);
+                        description.joints[i].parent_id = parentID;
 
 						float xoffset = 0;
 						memcpy(&xoffset, ptr, 4);
 						ptr += 4;
-						printf("X Offset : %3.2f\n", xoffset);
 
 						float yoffset = 0;
 						memcpy(&yoffset, ptr, 4);
 						ptr += 4;
-						printf("Y Offset : %3.2f\n", yoffset);
 
 						float zoffset = 0;
 						memcpy(&zoffset, ptr, 4);
 						ptr += 4;
-						printf("Z Offset : %3.2f\n", zoffset);
+                        
+                        description.joints[i].offset.x = xoffset;
+                        description.joints[i].offset.y = yoffset;
+                        description.joints[i].offset.z = zoffset;
 					}
+                    skeleton_descs.push_back(description);
 				}
 
 			}   // next dataset
-
-			 */
+            
+            // copy to mainthread
+            if (lock())
+            {
+                this->markerset_descs = markerset_descs;
+                this->rigidbody_descs = rigidbody_descs;
+                this->skeleton_descs = skeleton_descs;
+                unlock();
+            }
 		}
 		else
 		{
@@ -814,6 +865,10 @@ void ofxNatNet::update()
 					it++;
 				}
 			}
+            
+            markerset_descs = thread->markerset_descs;
+            rigidbody_descs = thread->rigidbody_descs;
+            skeleton_descs = thread->skeleton_descs;
 		}
 		else
 		{
@@ -892,6 +947,8 @@ void ofxNatNet::forceSetNatNetVersion(int v)
 }
 
 void ofxNatNet::sendPing() { thread->sendPing(); }
+
+void ofxNatNet::sendRequestDescription() { thread->sendRequestDescription(); }
 
 void ofxNatNet::setTransform(const ofMatrix4x4& m)
 {
@@ -985,7 +1042,14 @@ void ofxNatNet::debugDrawInformation()
 	str += "num filterd (non rigidbodies) marker: " +
 	ofToString(getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(getNumRigidBody()) + "\n";
-	str += "num skeleton: " + ofToString(getNumSkeleton());
+	str += "num skeleton: " + ofToString(getNumSkeleton()) + "\n\n";
+    
+    if (markerset_descs.size() || rigidbody_descs.size() || skeleton_descs.size()) {
+        str += "Description: \n";
+        for (auto& desc : markerset_descs) { str += "MarkerSet Name: " + desc.name + "\n"; }
+        for (auto& desc : rigidbody_descs) { str += "RigidBody Name: " + desc.name + "\n"; }
+        for (auto& desc : skeleton_descs) { str += "Skeleton Name: " + desc.name + "\n"; }
+    }
 	
 	ofDrawBitmapStringHighlight(str, 10, 20, ofColor(40), ofColor(255));
 	
@@ -997,3 +1061,4 @@ void ofxNatNet::debugDraw()
 	debugDrawMarkers();
 	debugDrawInformation();
 }
+
