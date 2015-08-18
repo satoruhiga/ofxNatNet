@@ -152,9 +152,9 @@ public:
 	void debugDrawInformation();
 	void debugDrawMarkers();
     
-    inline const vector<MarkerSetDescription> getMarkerSetDescriptions() { return markerset_descs; }
-    inline const vector<RigidBodyDescription> getRigidBodyDescriptions() { return rigidbody_descs; }
-    inline const vector<SkeletonDescription> getSkeletonDescriptions() { return skeleton_descs; }
+	inline const vector<MarkerSetDescription> getMarkerSetDescriptions() { return markerset_descs; }
+	inline const vector<RigidBodyDescription> getRigidBodyDescriptions() { return rigidbody_descs; }
+	inline const vector<SkeletonDescription> getSkeletonDescriptions() { return skeleton_descs; }
     
 protected:
 	InternalThread* thread;
