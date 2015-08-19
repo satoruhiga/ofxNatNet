@@ -37,6 +37,31 @@ public:
 		int id;
 		vector<RigidBody> joints;
 	};
+    
+    class RigidBodyDescription
+    {
+    public:
+        string name;
+        int id;
+        int parent_id;
+        ofVec3f offset;
+        vector<string> marker_names;
+    };
+    
+    class SkeletonDescription
+    {
+    public:
+        string name;
+        int id;
+        vector<RigidBodyDescription> joints;
+    };
+    
+    class MarkerSetDescription
+    {
+    public:
+        string name;
+        vector<string> marker_names;
+    };
 
 	ofxNatNet()
 		: thread(NULL)
@@ -53,6 +78,7 @@ public:
 	void update();
 
 	void sendPing();
+    void sendRequestDescription();
 
 	bool isConnected();
 	int getFrameNumber() { return frame_number; }
@@ -125,7 +151,11 @@ public:
 	void debugDraw();
 	void debugDrawInformation();
 	void debugDrawMarkers();
-
+    
+	inline const vector<MarkerSetDescription> getMarkerSetDescriptions() { return markerset_descs; }
+	inline const vector<RigidBodyDescription> getRigidBodyDescriptions() { return rigidbody_descs; }
+	inline const vector<SkeletonDescription> getSkeletonDescriptions() { return skeleton_descs; }
+    
 protected:
 	InternalThread* thread;
 
@@ -143,6 +173,10 @@ protected:
 	map<int, Skeleton> skeletons;
 	vector<Skeleton*> skeletons_arr;
 
+	vector<RigidBodyDescription> rigidbody_descs;
+	vector<SkeletonDescription> skeleton_descs;
+	vector<MarkerSetDescription> markerset_descs;
+    
 	void dispose();
 
 private:
