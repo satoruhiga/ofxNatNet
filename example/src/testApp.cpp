@@ -11,7 +11,7 @@ void testApp::setup() {
 	ofSetVerticalSync(true);
 	ofBackground(0);
 
-	natnet.setup("en7", "10.0.1.1");  // interface name, server ip
+	natnet.setup("192.168.1.70", "192.168.1.70");  // interface name, server ip
 	natnet.setScale(100);
 	natnet.setDuplicatedPointRemovalDistance(20);
 }

@@ -4,6 +4,7 @@
 #include <Poco/Net/DatagramSocket.h>
 #include <Poco/Net/MulticastSocket.h>
 #include <Poco/Net/NetworkInterface.h>
+#include <Poco/Net/NetException.h>
 
 #define MAX_NAMELENGTH 256
 
@@ -19,6 +20,8 @@
 #define NAT_MESSAGESTRING 8
 #define NAT_UNRECOGNIZED_REQUEST 100
 #define UNDEFINED 999999.9999
+
+#define MAX_PACKETSIZE 100000
 
 // sender
 struct sSender
@@ -36,10 +39,10 @@ struct sPacket
 	unsigned short nDataBytes;  // Num bytes in payload
 	union
 	{
-		unsigned char cData[20000];
-		char szData[20000];
-		unsigned long lData[5000];
-		float fData[5000];
+		unsigned char cData[MAX_PACKETSIZE];
+		char szData[MAX_PACKETSIZE];
+		unsigned long lData[MAX_PACKETSIZE / 4];
+		float fData[MAX_PACKETSIZE / 4];
 		sSender Sender;
 	} Data;  // Payload
 };
@@ -57,7 +60,9 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	int command_port;
 
+	Poco::Net::NetworkInterface interface;
 	Poco::Net::MulticastSocket data_socket;
+	Poco::Net::DatagramSocket command_socket;
 
 	int NatNetVersion[4];
 	int ServerVersion[4];
@@ -108,10 +113,16 @@ struct ofxNatNet::InternalThread : public ofThread
 			{
 				Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(),
 											  data_port);
-
-				Poco::Net::NetworkInterface interface =
-					Poco::Net::NetworkInterface::forName(
+				
+				try
+				{
+					interface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(interface_name));
+				}
+				catch (const Poco::Net::InterfaceNotFoundException& e)
+				{
+					interface = Poco::Net::NetworkInterface::forName(
 						interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
+				}
 
 				data_socket.bind(addr, true);
 				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group),
@@ -123,18 +134,32 @@ struct ofxNatNet::InternalThread : public ofThread
 				assert(data_socket.getReceiveBufferSize() == 0x100000);
 			}
 
-
 			for (int i = 0; i < 4; i++)
 			{
 				NatNetVersion[i] = 0;
 				ServerVersion[i] = 0;
 			}
 
+			{
+				Poco::Net::SocketAddress my_addr(interface.address(), 0);
+				command_socket.bind(my_addr, true);
+				command_socket.setReceiveBufferSize(0x100000);
+				command_socket.setBroadcast(true);
+				assert(command_socket.getReceiveBufferSize() == 0x100000);
+			}
+
+			{
+				Poco::Net::SocketAddress target_addr(target_host, command_port);
+				command_socket.connect(target_addr);
+				command_socket.setSendBufferSize(0x100000);
+				assert(command_socket.getSendBufferSize() == 0x100000);
+			}
+
 			startThread();
 
 			sendPing();
 		}
-		catch (std::exception& e)
+		catch (const std::exception& e)
 		{
 			ofLogError("ofxNatNet") << e.what();
 			error_str = e.what();
@@ -221,29 +246,18 @@ struct ofxNatNet::InternalThread : public ofThread
         packet.nDataBytes = 0;
         
         Poco::Timespan timeout(100 * 1000);
-        Poco::Net::DatagramSocket command_socket;
         
-        {
-            Poco::Net::SocketAddress address(Poco::Net::IPAddress::wildcard(), command_port);
-            command_socket.bind(address, true);
-            command_socket.setReceiveBufferSize(0x100000);
-            assert(command_socket.getReceiveBufferSize() == 0x100000);
-        }
-        {
-            Poco::Net::SocketAddress address(target_host, command_port);
-            command_socket.connect(address);
-            
-            command_socket.setSendBufferSize(0x100000);
-            assert(command_socket.getSendBufferSize() == 0x100000);
-        }
         for (int i = 0; i < 3; i++)
         {
             unsigned int n = command_socket.sendBytes(&packet, 4 + packet.nDataBytes);
             
-            command_socket.receiveBytes((char*)&packet, sizeof(sPacket));
-            if (packet.nDataBytes > 0) {
-                Unpack((char*)&packet);
-            }
+			if (command_socket.poll(timeout, Poco::Net::Socket::SELECT_READ))
+			{
+				command_socket.receiveBytes((char*)&packet, sizeof(sPacket));
+				if (packet.nDataBytes > 0) {
+					Unpack((char*)&packet);
+				}
+			}
         }
     }
 
@@ -256,24 +270,6 @@ struct ofxNatNet::InternalThread : public ofThread
 		connected = false;
 		
 		Poco::Timespan timeout(100 * 1000);
-		Poco::Net::DatagramSocket command_socket;
-		
-		{
-			Poco::Net::SocketAddress address(
-											 Poco::Net::IPAddress::wildcard(), command_port);
-			command_socket.bind(address, true);
-			
-			command_socket.setReceiveBufferSize(0x100000);
-			assert(command_socket.getReceiveBufferSize() == 0x100000);
-		}
-		
-		{
-			Poco::Net::SocketAddress address(target_host, command_port);
-			command_socket.connect(address);
-			
-			command_socket.setSendBufferSize(0x100000);
-			assert(command_socket.getSendBufferSize() == 0x100000);
-		}
 
 		for (int i = 0; i < 3; i++)
 		{
@@ -298,6 +294,10 @@ struct ofxNatNet::InternalThread : public ofThread
 							NatNetVersion[i] = (int)packet.Data.Sender.NatNetVersion[i];
 							ServerVersion[i] = (int)packet.Data.Sender.Version[i];
 						}
+
+						printf("connected. NatNet: v%i.%i, Server: v%i.%i\n", NatNetVersion[0], NatNetVersion[1], ServerVersion[0], ServerVersion[1]);
+
+						return;
 					}
 				}
 				catch (Poco::Exception& exc)
@@ -307,7 +307,7 @@ struct ofxNatNet::InternalThread : public ofThread
 				}
 			}
 
-			ofLogWarning("ofxNatNet") << "No route to host count: " << i;
+			ofLogWarning("ofxNatNet") << "No route to host. count: " << i;
 		}
 	}
 	
@@ -326,20 +326,17 @@ struct ofxNatNet::InternalThread : public ofThread
 		
 		for (int j = 0; j < nMarkers; j++)
 		{
-			float x = 0.0f;
-			memcpy(&x, ptr, 4);
+			ofVec3f p;
+			memcpy(&p.x, ptr, 4);
 			ptr += 4;
-			float y = 0.0f;
-			memcpy(&y, ptr, 4);
+			memcpy(&p.y, ptr, 4);
 			ptr += 4;
-			float z = 0.0f;
-			memcpy(&z, ptr, 4);
+			memcpy(&p.z, ptr, 4);
 			ptr += 4;
+
+			p = transform.preMult(p);
 			
-			ofVec3f pp(x, y, z);
-			pp = transform.preMult(pp);
-			
-			markers[j] = pp;
+			markers[j] = p;
 		}
 		
 		return ptr;
@@ -419,15 +416,6 @@ struct ofxNatNet::InternalThread : public ofThread
 				// associated marker sizes
 				nBytes = nRigidMarkers * sizeof(float);
 				ptr += nBytes;
-				
-				// 2.6 and later
-				if( ((major == 2)&&(minor >= 6)) || (major > 2) || (major == 0) )
-				{
-					// params
-					short params = 0; memcpy(&params, ptr, 2); ptr += 2;
-					bool bTrackingValid = params & 0x01; // 0x01 : rigid body was successfully tracked in this frame
-				}
-				
 			}
 			
 			RB.markers.resize(nRigidMarkers);
@@ -456,6 +444,14 @@ struct ofxNatNet::InternalThread : public ofThread
 				RB._active = RB.mean_marker_error > 0;
 			} else {
 				RB.mean_marker_error = 0;
+			}
+
+			// 2.6 and later
+			if (((major == 2) && (minor >= 6)) || (major > 2) || (major == 0))
+			{
+				// params
+				short params = 0; memcpy(&params, ptr, 2); ptr += 2;
+				bool bTrackingValid = params & 0x01; // 0x01 : rigid body was successfully tracked in this frame
 			}
 			
 		}  // next rigid body
@@ -585,11 +581,58 @@ struct ofxNatNet::InternalThread : public ofThread
 				}
 			}
 
+			// Force Plate data (version 2.9 and later)
+			if (((major == 2) && (minor >= 9)) || (major > 2))
+			{
+				int nForcePlates;
+				memcpy(&nForcePlates, ptr, 4); ptr += 4;
+				for (int iForcePlate = 0; iForcePlate < nForcePlates; iForcePlate++)
+				{
+					// ID
+					int ID = 0; memcpy(&ID, ptr, 4); ptr += 4;
+
+					// Channel Count
+					int nChannels = 0; memcpy(&nChannels, ptr, 4); ptr += 4;
+
+					// Channel Data
+					for (int i = 0; i < nChannels; i++)
+					{
+						int nFrames = 0; memcpy(&nFrames, ptr, 4); ptr += 4;
+						for (int j = 0; j < nFrames; j++)
+						{
+							float val = 0.0f;  memcpy(&val, ptr, 4); ptr += 4;
+						}
+					}
+				}
+			}
+
 			// latency
 			memcpy(&latency, ptr, 4);
 			ptr += 4;
 
 			this->latency = latency;
+
+			// timecode
+			unsigned int timecode = 0; 	memcpy(&timecode, ptr, 4);	ptr += 4;
+			unsigned int timecodeSub = 0; memcpy(&timecodeSub, ptr, 4); ptr += 4;
+
+			// timestamp
+			double timestamp = 0.0f;
+			// 2.7 and later - increased from single to double precision
+			if (((major == 2) && (minor >= 7)) || (major>2))
+			{
+				memcpy(&timestamp, ptr, 8); ptr += 8;
+			}
+			else
+			{
+				float fTemp = 0.0f;
+				memcpy(&fTemp, ptr, 4); ptr += 4;
+			}
+
+			// frame params
+			short params = 0;  memcpy(&params, ptr, 2); ptr += 2;
+			bool bIsRecording = params & 0x01;                  // 0x01 Motive is recording
+			bool bTrackedModelsChanged = params & 0x02;         // 0x02 Actively tracked model list has changed
 
 			// end of data tag
 			int eod = 0;

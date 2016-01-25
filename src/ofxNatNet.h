@@ -4,8 +4,8 @@
 
 class ofxNatNet
 {
-	class InternalThread;
-	friend class InternalThread;
+	struct InternalThread;
+	friend struct InternalThread;
 
 public:
 	typedef ofVec3f Marker;
