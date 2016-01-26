@@ -6,6 +6,9 @@
 #include <Poco/Net/NetworkInterface.h>
 #include <Poco/Net/NetException.h>
 
+const int impl_major = 2;
+const int impl_minor = 9;
+
 #define MAX_NAMELENGTH 256
 
 // NATNET message ids
@@ -118,7 +121,7 @@ struct ofxNatNet::InternalThread : public ofThread
 				{
 					interface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(interface_name));
 				}
-				catch (const Poco::Net::InterfaceNotFoundException& e)
+				catch (const Poco::Net::InvalidAddressException& e)
 				{
 					interface = Poco::Net::NetworkInterface::forName(
 						interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
@@ -464,7 +467,17 @@ struct ofxNatNet::InternalThread : public ofThread
 		int major = NatNetVersion[0];
 		int minor = NatNetVersion[1];
 		
-		if (major == 0 && minor == 0) return;
+		if (major == 0 && minor == 0)
+		{
+			ofLogError("ofxNatNet") << "initialize failed";
+			return;
+		}
+		
+		if (major > impl_major || minor > impl_minor)
+		{
+			ofLogError("ofxNatNet") << "The implemented NatNet parser is outdated";
+			return;
+		}
 
 		ofQuaternion rot = transform.getRotate();
 
@@ -983,10 +996,11 @@ void ofxNatNet::setTimeout(float timeout)
 	this->timeout = timeout;
 }
 
-void ofxNatNet::forceSetNatNetVersion(int v)
+void ofxNatNet::forceSetNatNetVersion(int major, int minor)
 {
 	assert(thread);
-	thread->NatNetVersion[0] = v;
+	thread->NatNetVersion[0] = major;
+	thread->NatNetVersion[1] = minor;
 }
 
 void ofxNatNet::sendPing() { thread->sendPing(); }

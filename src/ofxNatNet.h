@@ -146,7 +146,7 @@ public:
 	
 	void setTimeout(float timeout);
 
-	void forceSetNatNetVersion(int v);
+	void forceSetNatNetVersion(int major, int minor);
 
 	void debugDraw();
 	void debugDrawInformation();
