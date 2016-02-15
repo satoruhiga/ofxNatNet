@@ -48,7 +48,7 @@ void testApp::draw() {
 
 	ofNoFill();
 
-	// draw filterd markers
+	// draw filtered markers
 	ofSetColor(255);
 	for (int i = 0; i < natnet.getNumFilterdMarker(); i++) {
 		ofDrawBox(natnet.getFilterdMarker(i), 10);
@@ -101,7 +101,7 @@ void testApp::draw() {
 	str += string("connected: ") + (natnet.isConnected() ? "YES" : "NO") + "\n";
 	str += "num markers set: " + ofToString(natnet.getNumMarkersSet()) + "\n";
 	str += "num marker: " + ofToString(natnet.getNumMarker()) + "\n";
-	str += "num filterd (non regidbodies) marker: " +
+	str += "num filtered (non regidbodies) marker: " +
 		   ofToString(natnet.getNumFilterdMarker()) + "\n";
 	str += "num rigidbody: " + ofToString(natnet.getNumRigidBody()) + "\n";
 	str += "num skeleton: " + ofToString(natnet.getNumSkeleton()) + "\n";
