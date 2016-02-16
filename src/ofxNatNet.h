@@ -2,188 +2,173 @@
 
 #include "ofMain.h"
 
-class ofxNatNet
-{
-	struct InternalThread;
-	friend struct InternalThread;
+#include <Poco/Net/DatagramSocket.h>
 
-public:
+#include <atomic>
+
+namespace ofxNatNet {
+
 	typedef ofVec3f Marker;
 
-	class RigidBody
-	{
-		friend class InternalThread;
+	struct LabeledMarker : public Marker {
+		int id;
+		float size;
+		uint16_t params;
 
-	public:
+		inline bool isOccluded() const { return params & 0x01; }
+		inline bool isPointCloudSolbed() const { return params & 0x02; }
+		inline bool isModelSolved() const { return params & 0x04; }
+	};
+
+	struct MarkerSet {
+		std::string name;
+		std::vector<Marker> markers;
+	};
+
+	struct RigidBody {
 		int id;
 		ofMatrix4x4 matrix;
-		vector<Marker> markers;
-
-		float mean_marker_error;
-
-		inline bool isActive() const { return _active; }
-		OF_DEPRECATED_MSG("Use isActive insted.", bool active() const);
-
-		const ofMatrix4x4& getMatrix() const { return matrix; }
-
-	private:
-		bool _active;
-		ofVec3f raw_position;
+		std::vector<Marker> markers;
+		std::vector<int> markerID;
+		std::vector<float> markerSize;
+		float meanMarkerError;
+		bool tracking;
 	};
-	
-	class Skeleton
+
+	struct Skeleton {
+		int id;
+		std::vector<RigidBody> joints;
+	};
+
+	struct Frame {
+		float timestamp;
+
+		int frameNumber;
+
+		std::vector<MarkerSet> markerSets;
+		std::vector<Marker> markers;
+		std::vector<LabeledMarker> labeledMarkers;
+		std::vector<RigidBody> rigidbodies;
+		std::vector<Skeleton> skeletons;
+
+		float latency;
+		unsigned int timecode;
+		unsigned int timecodeSub;
+		double natnetTimestamp;
+	};
+
+	struct MarkerSetDescription {
+		string name;
+		std::vector<string> markerNames;
+	};
+
+	struct RigidBodyDescription {
+		string name;
+		int id;
+		int parentID;
+		ofVec3f offset;
+		std::vector<string> markerNames;
+	};
+
+	struct SkeletonDescription {
+		string name;
+		int id;
+		std::vector<RigidBodyDescription> joints;
+	};
+
+	class Client
 	{
 	public:
-		int id;
-		vector<RigidBody> joints;
+
+		Client();
+		~Client();
+
+		bool connect(const std::string& interface_ip, const std::string& server_ip, int timeout_ms = 1000);
+		void disconnect();
+
+		void sendPing(int timeout_ms = 500);
+		void sendRequestModelDef(int timeout_ms = 500);
+
+		void update();
+		bool isFrameNew();
+
+		bool getFrame(Frame& frame);
+
+		void draw();
+
+		bool isConnected() const { return connected; }
+		float getFps() const { return fps; }
+		
+		const string& getInterfaceIP() const { return interfaceIP; }
+		const string& getServerIP() const { return serverIP; }
+		
+		const std::vector<MarkerSetDescription>& getMarkerSetDescriptions() const { return markersetDescriptions; }
+		const std::vector<RigidBodyDescription>& getRigidbodyDescriptions() const { return rigidbodyDescriptions; }
+		const std::vector<SkeletonDescription>& getSkeletonDescriptions() const { return skeletonDescriptions; }
+
+	public:
+
+		void setScale(float scale);
+
+	public:
+
+		ofEvent<Frame> onFrameUpdate;
+		ofEvent<Frame> onFrameReceive; // WARNING: called by socket thread
+
+	protected:
+
+		std::atomic_bool isRunning;
+
+		std::unique_ptr<std::thread> dataSocketThread;
+		void dataSocketThreadLoop();
+
+		std::unique_ptr<std::thread> commandSocketThread;
+		void commandSocketLoop();
+		Poco::Net::DatagramSocket commandSocket;
+		ofThreadChannel<std::string> commandDataChannel;
+
+		std::deque<std::shared_ptr<Frame>> queue;
+		std::mutex mutex;
+		std::condition_variable condition;
+
+		std::shared_ptr<Frame> latestFrame;
+
+		bool connected;
+		bool frameNew;
+
+		int natnet_version[4];
+		int server_version[4];
+		int major, minor;
+
+		std::string interfaceIP;
+		std::string serverIP;
+
+		int command_port;
+		int data_port;
+
+		std::string multicast_group;
+
+		std::vector<MarkerSetDescription> markersetDescriptions;
+		std::vector<RigidBodyDescription> rigidbodyDescriptions;
+		std::vector<SkeletonDescription> skeletonDescriptions;
+
+		float pingTimer;
+		float fps;
+
+		float scale;
+		ofMatrix4x4 transform;
+
+		void sendCommandMessage(int message_type);
+		bool sendCommandMessageBlocking(int message_type, int timeout_ms);
+
+		bool unpackCommandSocket(const uint8_t* data, size_t size);
+		bool unpackPing(const uint8_t* data, size_t size);
+		bool unpackModelDef(const uint8_t* data, size_t size);
+
+		bool unpackFrame(uint8_t* data, size_t size, Frame& frame);
+		uint8_t* unpackMarkerSet(uint8_t* ptr, vector<Marker>& markers);
+		uint8_t* unpackRigidBodies(uint8_t* ptr, std::vector<RigidBody>& rigidbodies);
+		bool receiveFrame(std::shared_ptr<Frame>& frame, bool& is_last_frame);
 	};
-    
-    class RigidBodyDescription
-    {
-    public:
-        string name;
-        int id;
-        int parent_id;
-        ofVec3f offset;
-        vector<string> marker_names;
-    };
-    
-    class SkeletonDescription
-    {
-    public:
-        string name;
-        int id;
-        vector<RigidBodyDescription> joints;
-    };
-    
-    class MarkerSetDescription
-    {
-    public:
-        string name;
-        vector<string> marker_names;
-    };
 
-	ofxNatNet()
-		: thread(NULL)
-		, frame_number(0)
-		, latency(0)
-		, timeout(0.1)
-	{
-	}
-	~ofxNatNet() { dispose(); }
-
-	void setup(string interface_name, string target_host,
-			   string multicast_group = "239.255.42.99",
-			   int command_port = 1510, int data_port = 1511);
-	void update();
-
-	void sendPing();
-    void sendRequestDescription();
-
-	bool isConnected();
-	int getFrameNumber() { return frame_number; }
-	float getLatency() { return latency; }
-
-	float getDataRate();
-	float getLastPacketArraivalTime();
-
-	void setScale(float v);
-	ofVec3f getScale();
-
-	void setTransform(const ofMatrix4x4& m);
-	const ofMatrix4x4& getTransform();
-
-	void setDuplicatedPointRemovalDistance(float v);
-
-	inline const size_t getNumMarkersSet() { return markers_set.size(); }
-	inline const vector<Marker>& getMarkersSetAt(size_t index) { return markers_set[index]; }
-	
-	inline const size_t getNumMarker() { return markers.size(); }
-	inline const Marker& getMarker(size_t index) { return markers[index]; }
-
-	inline const size_t getNumFilterdMarker() { return filterd_markers.size(); }
-	inline const Marker& getFilterdMarker(size_t index)
-	{
-		return filterd_markers[index];
-	}
-
-	inline const size_t getNumRigidBody() { return rigidbodies.size(); }
-	inline const RigidBody& getRigidBodyAt(int index)
-	{
-		return *rigidbodies_arr[index];
-	}
-
-	inline const bool hasRigidBody(int id)
-	{
-		return rigidbodies.find(id) != rigidbodies.end();
-	}
-	inline const bool getRigidBody(int id, RigidBody& RB)
-	{
-		if (!hasRigidBody(id)) return false;
-		RB = rigidbodies[id];
-		return true;
-	}
-	
-	inline const size_t getNumSkeleton() { return skeletons.size(); }
-	inline const Skeleton& getSkeletonAt(int index)
-	{
-		return *skeletons_arr[index];
-	}
-	
-	inline const bool hasSkeleton(int id)
-	{
-		return skeletons.find(id) != skeletons.end();
-	}
-	inline const bool getSkeleton(int id, Skeleton& S)
-	{
-		if (!hasSkeleton(id)) return false;
-		S = skeletons[id];
-		return true;
-	}
-
-	void setBufferTime(float sec);
-	float getBufferTime();
-	
-	void setTimeout(float timeout);
-
-	void forceSetNatNetVersion(int major, int minor);
-
-	void debugDraw();
-	void debugDrawInformation();
-	void debugDrawMarkers();
-    
-	inline const vector<MarkerSetDescription> getMarkerSetDescriptions() { return markerset_descs; }
-	inline const vector<RigidBodyDescription> getRigidBodyDescriptions() { return rigidbody_descs; }
-	inline const vector<SkeletonDescription> getSkeletonDescriptions() { return skeleton_descs; }
-    
-protected:
-	InternalThread* thread;
-
-	int frame_number;
-	float latency;
-	float timeout;
-	
-	vector<vector<Marker> > markers_set;
-	vector<Marker> filterd_markers;
-	vector<Marker> markers;
-
-	map<int, RigidBody> rigidbodies;
-	vector<RigidBody*> rigidbodies_arr;
-	
-	map<int, Skeleton> skeletons;
-	vector<Skeleton*> skeletons_arr;
-
-	vector<RigidBodyDescription> rigidbody_descs;
-	vector<SkeletonDescription> skeleton_descs;
-	vector<MarkerSetDescription> markerset_descs;
-    
-	void dispose();
-
-private:
-	ofxNatNet(const ofxNatNet&);
-	ofxNatNet& operator=(const ofxNatNet&);
-};
-
-//
-
-inline bool ofxNatNet::RigidBody::active() const { return isActive(); }
+}
