@@ -149,9 +149,16 @@ namespace ofxNatNet {
 		request_packet.iMessage = message_type;
 		request_packet.nDataBytes = 0;
 
-		Poco::Net::SocketAddress server_addr(Poco::Net::IPAddress(serverIP), command_port);
+		try
+		{
+			Poco::Net::SocketAddress server_addr(Poco::Net::IPAddress(serverIP), command_port);
 
-		commandSocket.sendTo(&request_packet, 4 + request_packet.nDataBytes, server_addr);
+			commandSocket.sendTo(&request_packet, 4 + request_packet.nDataBytes, server_addr);
+		}
+		catch (const Poco::Net::NetException& e)
+		{
+			ofLogError("ofxNatNet") << e.what();
+		}
 	}
 
 	bool Client::sendCommandMessageBlocking(int message_type, int timeout_ms)
@@ -169,12 +176,12 @@ namespace ofxNatNet {
 
 		for (int i = 0; i < 3; i++)
 		{
-			Poco::Net::SocketAddress server_addr(Poco::Net::IPAddress(serverIP), command_port);
-
-			socket.sendTo(&request_packet, 4 + request_packet.nDataBytes, server_addr);
-
 			try
 			{
+				Poco::Net::SocketAddress server_addr(Poco::Net::IPAddress(serverIP), command_port);
+
+				socket.sendTo(&request_packet, 4 + request_packet.nDataBytes, server_addr);
+
 				if (socket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
 				{
 					sPacket packet;
@@ -789,9 +796,12 @@ namespace ofxNatNet {
 			ofDrawBox(p, 2);
 		}
 
-		ofSetColor(0, 0, 255);
 		for (const auto& p : frame.labeledMarkers)
 		{
+			if (p.isOccluded())
+				continue;
+
+			ofSetColor(255, 255, 0);
 			ofDrawBox(p, 4);
 		}
 

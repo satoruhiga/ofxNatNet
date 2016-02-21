@@ -11,7 +11,7 @@ namespace ofxNatNet {
 	typedef ofVec3f Marker;
 
 	struct LabeledMarker : public Marker {
-		int id;
+		int id = -1;
 		float size;
 		uint16_t params;
 
@@ -137,7 +137,6 @@ namespace ofxNatNet {
 			int id = -1;
 			int parentID = -1;
 			ofVec3f offset;
-			std::vector<string> markerNames;
 		};
 
 		struct SkeletonDescription {

@@ -2,7 +2,7 @@
 
 //--------------------------------------------------------------
 void ofApp::setup(){
-	ofBackground(0);
+	ofBackground(30);
 	ofSetLogLevel(OF_LOG_VERBOSE);
 	natnet.connect("127.0.0.1", "127.0.0.1");
 }
@@ -15,10 +15,10 @@ void ofApp::update(){
 //--------------------------------------------------------------
 void ofApp::draw(){
 	cam.begin();
-	ofDrawAxis(100);
-
-	natnet.draw();
-
+	{
+		ofDrawAxis(100);
+		natnet.draw();
+	}
 	cam.end();
 
 	stringstream ss;
@@ -42,13 +42,14 @@ void ofApp::draw(){
 			ss << "* num unlabeled markers: " << frame.markers.size() << endl;
 			ss << "* num labeled markers: " << frame.labeledMarkers.size() << endl;
 			ss << "* num marker sets: " << frame.markerSets.size() << endl;
+
 			ss << "* num rigidbodies: " << frame.rigidbodies.size() << endl;
 			for (const auto& RB : frame.rigidbodies)
 			{
-				ss << "\tid: " << RB.id << endl;
-				ss << "\tname: " << RB.name << endl;
-				ss << "\t:tracking: " << (RB.tracking ? "YES" : "NO") << endl;
-				ss << "\t:mean error: " << RB.meanMarkerError << endl;
+				ss << "\t- id: " << RB.id << endl;
+				ss << "\t\t- name: " << RB.name << endl;
+				ss << "\t\t- tracking: " << (RB.tracking ? "YES" : "NO") << endl;
+				ss << "\t\t- mean error: " << RB.meanMarkerError << endl;
 			}
 
 			ss << "* timecode: " << frame.timecode << endl;
@@ -56,6 +57,7 @@ void ofApp::draw(){
 			ss << "* natnetTimestamp: " << frame.natnetTimestamp;
 		}
 	}
+
 
 	ofDrawBitmapStringHighlight(ss.str(), 10, 20);
 }
