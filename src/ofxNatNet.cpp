@@ -58,20 +58,12 @@ namespace ofxNatNet {
 		, fps(0)
 		, pingTimer(-1)
 	{
-		setScale(100);
+		setTransform(ofMatrix4x4::newScaleMatrix(ofVec3f(100)));
 	}
 
 	Client::~Client()
 	{
 		disconnect();
-	}
-
-	void Client::setScale(float scale)
-	{
-		this->scale = scale;
-
-		transform.makeIdentityMatrix();
-		transform.glScale(scale, scale, scale);
 	}
 
 	bool Client::connect(const std::string& interface_ip, const std::string& server_ip, int timeout_ms)
@@ -164,6 +156,13 @@ namespace ofxNatNet {
 
 	bool Client::sendCommandMessageBlocking(int message_type, int timeout_ms)
 	{
+		Poco::Net::DatagramSocket socket;
+
+		socket.bind(Poco::Net::SocketAddress(interfaceIP, 0), true);
+		socket.setSendBufferSize(0x100000);
+		socket.setReceiveBufferSize(0x100000);
+		socket.setBroadcast(true);
+
 		sPacket request_packet;
 		request_packet.iMessage = message_type;
 		request_packet.nDataBytes = 0;
@@ -172,14 +171,14 @@ namespace ofxNatNet {
 		{
 			Poco::Net::SocketAddress server_addr(Poco::Net::IPAddress(serverIP), command_port);
 
-			commandSocket.sendTo(&request_packet, 4 + request_packet.nDataBytes, server_addr);
+			socket.sendTo(&request_packet, 4 + request_packet.nDataBytes, server_addr);
 
 			try
 			{
-				if (commandSocket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
+				if (socket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
 				{
 					sPacket packet;
-					int n = commandSocket.receiveBytes(&packet, sizeof(sPacket));
+					int n = socket.receiveBytes(&packet, sizeof(sPacket));
 					if (unpackCommandSocket((const uint8_t*)&packet, n))
 						return true;
 				}
@@ -269,6 +268,8 @@ namespace ofxNatNet {
 		sPacket* packet = (sPacket*)data;
 		const uint8_t* ptr = (const uint8_t*)&packet->Data;
 
+		std::lock_guard<std::mutex> lock(modeDefMutex);
+
 		markersetDescriptions.clear();
 		rigidbodyDescriptions.clear();
 		skeletonDescriptions.clear();
@@ -303,8 +304,7 @@ namespace ofxNatNet {
 				}
 				case 1: // rigid body
 				{
-					rigidbodyDescriptions.emplace_back();
-					auto& desc = rigidbodyDescriptions.back();
+					RigidBodyDescription desc;
 
 					if (major >= 2)
 					{
@@ -316,12 +316,13 @@ namespace ofxNatNet {
 					memcpy(&desc.parentID, ptr, 4); ptr += 4;
 					memcpy(&desc.offset, ptr, sizeof(ofVec3f)); ptr += sizeof(ofVec3f);
 
+					rigidbodyDescriptions[desc.id] = desc;
+
 					break;
 				}
 				case 2: // skeleton
 				{
-					skeletonDescriptions.emplace_back();
-					auto& desc = skeletonDescriptions.back();
+					SkeletonDescription desc;
 
 					desc.name = (char*)ptr;
 					ptr += desc.name.size() + 1;
@@ -345,6 +346,8 @@ namespace ofxNatNet {
 						memcpy(&RBD.parentID, ptr, 4); ptr += 4;
 						memcpy(&RBD.offset, ptr, sizeof(ofVec3f)); ptr += sizeof(ofVec3f);
 					}
+
+					skeletonDescriptions[desc.id] = desc;
 
 					break;
 				}
@@ -454,14 +457,14 @@ namespace ofxNatNet {
 		memcpy(&nMarkerSets, ptr, 4);
 		ptr += 4;
 
-		frame.markerSets.resize(nMarkerSets);
 		for (int i = 0; i < nMarkerSets; i++)
 		{
-			MarkerSet& o = frame.markerSets[i];
-			std::string& name = o.name;
+			std::string name;
 			name = (char*)ptr;
 			ptr += name.size() + 1;
 
+			MarkerSet& o = frame.markerSets[name];
+			o.name = name;
 			ptr = unpackMarkerSet(ptr, o.markers);
 		}
 
@@ -483,10 +486,23 @@ namespace ofxNatNet {
 
 			for (int i = 0; i < nSkeletons; i++) {
 				Skeleton& o = frame.skeletons[i];
+
 				memcpy(&o.id, ptr, 4);
 				ptr += 4;
 
 				ptr = unpackRigidBodies(ptr, o.joints);
+
+				std::lock_guard<std::mutex> lock(modeDefMutex);
+
+				const auto& it = skeletonDescriptions.find(o.id);
+				if (it != skeletonDescriptions.end())
+				{
+					o.name = it->second.name;
+				}
+				else
+				{
+					o.name = "(UNKNOWN)";
+				}
 			}
 		}
 
@@ -679,6 +695,18 @@ namespace ofxNatNet {
 			{
 				o.tracking = o.meanMarkerError > 0;
 			}
+
+			std::lock_guard<std::mutex> lock(modeDefMutex);
+
+			const auto& it = rigidbodyDescriptions.find(o.id);
+			if (it != rigidbodyDescriptions.end())
+			{
+				o.name = it->second.name;
+			}
+			else
+			{
+				o.name = "(UNKNOWN)";
+			}
 		}
 
 		return ptr;
@@ -694,32 +722,7 @@ namespace ofxNatNet {
 		else return false;
 	}
 
-	bool Client::receiveFrame(std::shared_ptr<Frame>& frame, bool& is_last_frame)
-	{
-		std::unique_lock<std::mutex> lock(mutex);
-
-		is_last_frame = false;
-
-		if (!isRunning)
-			return false;
-
-		if (!queue.empty())
-		{
-			std::swap(frame, queue.front());
-			queue.pop_front();
-
-			if (queue.empty())
-				is_last_frame = true;
-
-			return true;
-		}
-		else
-		{
-			return false;
-		}
-	}
-
-	void Client::update()
+	void Client::update(float frame_timeout)
 	{
 		pingTimer -= ofGetLastFrameTime();
 		if (pingTimer < 0)
@@ -740,23 +743,26 @@ namespace ofxNatNet {
 		
 		frameNew = false;
 
-		bool is_last_frame = false;
 		std::shared_ptr<Frame> frame;
 
-		while (receiveFrame(frame, is_last_frame))
 		{
-			Frame* o = frame.get();
+			std::unique_lock<std::mutex> lock(mutex);
 
-			if (is_last_frame)
+			while (!queue.empty())
 			{
-				ofNotifyEvent(onFrameUpdate, *o);
-				latestFrame = frame;
-			}
+				frame = queue.front();
+				queue.pop_front();
 
-			frameNew = true;
+				frameNew = true;
+			}
 		}
 
-		float frame_timeout = 0.1;
+		if (frame)
+		{
+			latestFrame = frame;
+			ofNotifyEvent(onFrameUpdate, *latestFrame.get());
+		}
+
 		if (latestFrame && (ofGetElapsedTimef() - latestFrame->timestamp) > frame_timeout)
 		{
 			latestFrame.reset();
@@ -777,40 +783,29 @@ namespace ofxNatNet {
 		ofPushStyle();
 		ofNoFill();
 
+		ofSetColor(0, 255, 0);
 		for (const auto& p : frame.markers)
 		{
-			ofDrawBox(p, 3);
+			ofDrawBox(p, 2);
 		}
 
-		for (const auto& s : frame.markerSets)
-		{
-			ofVec3f c;
-
-			for (const auto& p : s.markers)
-			{
-				ofDrawBox(p, 3);
-				c += p;
-			}
-
-			c /= s.markers.size();
-			ofDrawBitmapString(s.name, c);
-		}
-
+		ofSetColor(0, 0, 255);
 		for (const auto& p : frame.labeledMarkers)
 		{
-			ofDrawBitmapString(std::to_string(p.id), p);
-			ofDrawBox(p, 3);
+			ofDrawBox(p, 4);
 		}
 
 		for (const auto& RB : frame.rigidbodies)
 		{
 			ofPushMatrix();
-			ofSetColor(RB.tracking ? ofColor(255) : ofColor(255, 0, 0));
 
+			ofSetColor(0, 255, 255);
 			for (const auto& p : RB.markers)
 			{
-				ofDrawBox(p, 3);
+				ofDrawBox(p, 6);
 			}
+
+			ofSetColor(RB.tracking ? ofColor(255) : ofColor(255, 0, 0));
 
 			glBegin(GL_LINE_LOOP);
 			for (const auto& p : RB.markers)
@@ -819,8 +814,11 @@ namespace ofxNatNet {
 			}
 			glEnd();
 
+			ofSetColor(255);
+
 			ofPushMatrix();
 			ofMultMatrix(RB.matrix);
+			ofDrawBitmapString(std::to_string(RB.id) + ":" + RB.name, ofVec3f(0));
 			ofDrawAxis(30);
 			ofPopMatrix();
 
@@ -828,6 +826,11 @@ namespace ofxNatNet {
 		}
 
 		ofPopStyle();
+	}
+
+	void Client::setTransform(const ofMatrix4x4& transform)
+	{
+		this->transform = transform;
 	}
 
 }

@@ -26,17 +26,19 @@ namespace ofxNatNet {
 	};
 
 	struct RigidBody {
-		int id;
+		int id = -1;
+		std::string name;
 		ofMatrix4x4 matrix;
 		std::vector<Marker> markers;
 		std::vector<int> markerID;
 		std::vector<float> markerSize;
-		float meanMarkerError;
-		bool tracking;
+		float meanMarkerError = 0.0f;
+		bool tracking = false;
 	};
 
 	struct Skeleton {
-		int id;
+		int id = -1;
+		std::string name;
 		std::vector<RigidBody> joints;
 	};
 
@@ -45,7 +47,7 @@ namespace ofxNatNet {
 
 		int frameNumber;
 
-		std::vector<MarkerSet> markerSets;
+		std::unordered_map<std::string, MarkerSet> markerSets;
 		std::vector<Marker> markers;
 		std::vector<LabeledMarker> labeledMarkers;
 		std::vector<RigidBody> rigidbodies;
@@ -56,26 +58,7 @@ namespace ofxNatNet {
 		unsigned int timecodeSub;
 		double natnetTimestamp;
 	};
-
-	struct MarkerSetDescription {
-		string name;
-		std::vector<string> markerNames;
-	};
-
-	struct RigidBodyDescription {
-		string name;
-		int id;
-		int parentID;
-		ofVec3f offset;
-		std::vector<string> markerNames;
-	};
-
-	struct SkeletonDescription {
-		string name;
-		int id;
-		std::vector<RigidBodyDescription> joints;
-	};
-
+	
 	class Client
 	{
 	public:
@@ -89,7 +72,7 @@ namespace ofxNatNet {
 		void sendPing(int timeout_ms = 500);
 		void sendRequestModelDef(int timeout_ms = 500);
 
-		void update();
+		void update(float frame_timeout = std::numeric_limits<float>::infinity());
 		bool isFrameNew();
 
 		bool getFrame(Frame& frame);
@@ -101,19 +84,15 @@ namespace ofxNatNet {
 		
 		const string& getInterfaceIP() const { return interfaceIP; }
 		const string& getServerIP() const { return serverIP; }
-		
-		const std::vector<MarkerSetDescription>& getMarkerSetDescriptions() const { return markersetDescriptions; }
-		const std::vector<RigidBodyDescription>& getRigidbodyDescriptions() const { return rigidbodyDescriptions; }
-		const std::vector<SkeletonDescription>& getSkeletonDescriptions() const { return skeletonDescriptions; }
 
 	public:
 
-		void setScale(float scale);
+		void setTransform(const ofMatrix4x4& transform);
 
 	public:
 
 		ofEvent<Frame> onFrameUpdate;
-		ofEvent<Frame> onFrameReceive; // WARNING: called by socket thread
+		ofEvent<Frame> onFrameReceive; // WARNING: calling on socket thread
 
 	protected:
 
@@ -148,14 +127,34 @@ namespace ofxNatNet {
 
 		std::string multicast_group;
 
+		struct MarkerSetDescription {
+			string name;
+			std::vector<string> markerNames;
+		};
+
+		struct RigidBodyDescription {
+			string name;
+			int id = -1;
+			int parentID = -1;
+			ofVec3f offset;
+			std::vector<string> markerNames;
+		};
+
+		struct SkeletonDescription {
+			string name;
+			int id = -1;
+			std::vector<RigidBodyDescription> joints;
+		};
+
 		std::vector<MarkerSetDescription> markersetDescriptions;
-		std::vector<RigidBodyDescription> rigidbodyDescriptions;
-		std::vector<SkeletonDescription> skeletonDescriptions;
+		std::unordered_map<int, RigidBodyDescription> rigidbodyDescriptions;
+		std::unordered_map<int, SkeletonDescription> skeletonDescriptions;
+
+		std::mutex modeDefMutex;
 
 		float pingTimer;
 		float fps;
 
-		float scale;
 		ofMatrix4x4 transform;
 
 		void sendCommandMessage(int message_type);
@@ -168,7 +167,5 @@ namespace ofxNatNet {
 		bool unpackFrame(uint8_t* data, size_t size, Frame& frame);
 		uint8_t* unpackMarkerSet(uint8_t* ptr, vector<Marker>& markers);
 		uint8_t* unpackRigidBodies(uint8_t* ptr, std::vector<RigidBody>& rigidbodies);
-		bool receiveFrame(std::shared_ptr<Frame>& frame, bool& is_last_frame);
 	};
-
 }
