@@ -163,73 +163,91 @@ namespace ofxNatNet {
 
 	bool Client::sendCommandMessageBlocking(int message_type, int timeout_ms)
 	{
-		Poco::Net::DatagramSocket socket;
-
-		socket.bind(Poco::Net::SocketAddress(interfaceIP, 0), true);
-		socket.setSendBufferSize(0x100000);
-		socket.setReceiveBufferSize(0x100000);
-		socket.setBroadcast(true);
-
-		sPacket request_packet;
-		request_packet.iMessage = message_type;
-		request_packet.nDataBytes = 0;
-
-		for (int i = 0; i < 3; i++)
+		try
 		{
-			try
+			Poco::Net::DatagramSocket socket;
+
+			socket.bind(Poco::Net::SocketAddress(interfaceIP, 0), true);
+
+			socket.setSendBufferSize(0x100000);
+			socket.setReceiveBufferSize(0x100000);
+			socket.setBroadcast(true);
+
+			sPacket request_packet;
+			request_packet.iMessage = message_type;
+			request_packet.nDataBytes = 0;
+
+			for (int i = 0; i < 3; i++)
 			{
-				Poco::Net::SocketAddress server_addr(Poco::Net::IPAddress(serverIP), command_port);
-
-				socket.sendTo(&request_packet, 4 + request_packet.nDataBytes, server_addr);
-
-				if (socket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
+				try
 				{
-					sPacket packet;
-					int n = socket.receiveBytes(&packet, sizeof(sPacket));
-					if (unpackCommandSocket((const uint8_t*)&packet, n))
-						return true;
+					Poco::Net::SocketAddress server_addr(Poco::Net::IPAddress(serverIP), command_port);
+
+					socket.sendTo(&request_packet, 4 + request_packet.nDataBytes, server_addr);
+
+					if (socket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
+					{
+						sPacket packet;
+						int n = socket.receiveBytes(&packet, sizeof(sPacket));
+						if (unpackCommandSocket((const uint8_t*)&packet, n))
+							return true;
+					}
+
+				}
+				catch (const Poco::Net::NetException& e)
+				{
+					ofLogError("ofxNatNet") << i << ": " << e.what();
 				}
 
-			}
-			catch (const Poco::Net::NetException& e)
-			{
-				ofLogError("ofxNatNet") << i << ": " << e.what();
+				ofSleepMillis(1000);
 			}
 
-			ofSleepMillis(1000);
+			return false;
 		}
-
-		return false;
+		catch (Poco::Net::NetException &e)
+		{
+			ofLogError("ofxNatNet") << e.what();
+			return false;
+		}
 	}
 
 	void Client::commandSocketLoop()
 	{
-		int timeout_ms = 100;
-
-		commandSocket.bind(Poco::Net::SocketAddress(interfaceIP, 0), true);
-		commandSocket.setSendBufferSize(0x100000);
-		commandSocket.setReceiveBufferSize(0x100000);
-		commandSocket.setBroadcast(true);
-
-		while (isRunning)
+		try
 		{
-			try
-			{
-				if (commandSocket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
-				{
-					sPacket packet;
-					int n = commandSocket.receiveBytes(&packet, sizeof(sPacket));
+			int timeout_ms = 100;
 
-					if (n > 0)
+			commandSocket.bind(Poco::Net::SocketAddress(interfaceIP, 0), true);
+
+			commandSocket.setSendBufferSize(0x100000);
+			commandSocket.setReceiveBufferSize(0x100000);
+			commandSocket.setBroadcast(true);
+
+			while (isRunning)
+			{
+				try
+				{
+					if (commandSocket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
 					{
-						commandDataChannel.send(std::string((char*)&packet, n));
+						sPacket packet;
+						int n = commandSocket.receiveBytes(&packet, sizeof(sPacket));
+
+						if (n > 0)
+						{
+							commandDataChannel.send(std::string((char*)&packet, n));
+						}
 					}
 				}
+				catch (const Poco::Net::NetException& e)
+				{
+					ofLogError("ofxNatNet") << e.what();
+				}
 			}
-			catch (const Poco::Net::NetException& e)
-			{
-				ofLogError("ofxNatNet") << e.what();
-			}
+		}
+		catch (Poco::Net::NetException &e)
+		{
+			ofLogError("ofxNatNet") << e.what();
+			return;
 		}
 	}
 
@@ -372,67 +390,74 @@ namespace ofxNatNet {
 
 	void Client::dataSocketThreadLoop()
 	{
-		Poco::Net::MulticastSocket socket(Poco::Net::SocketAddress(Poco::Net::IPAddress::wildcard(), data_port), true);
-		Poco::Net::NetworkInterface interface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(interfaceIP));
-		socket.joinGroup(Poco::Net::IPAddress(multicast_group), interface);
-
-		socket.setReceiveBufferSize(0x100000);
-
-		int timeout_ms = 100;
-		float last_packet_arrival_time = 0;
-
-		while (isRunning)
+		try
 		{
-			if (socket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
+			Poco::Net::MulticastSocket socket(Poco::Net::SocketAddress(Poco::Net::IPAddress::wildcard(), data_port), true);
+			Poco::Net::NetworkInterface interface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(interfaceIP));
+			socket.joinGroup(Poco::Net::IPAddress(multicast_group), interface);
+
+			socket.setReceiveBufferSize(0x100000);
+
+			int timeout_ms = 100;
+			float last_packet_arrival_time = 0;
+
+			while (isRunning)
 			{
-				float T = ofGetElapsedTimef();
-
-				try
+				if (socket.poll(Poco::Timespan(timeout_ms * 1000), Poco::Net::Socket::SELECT_READ))
 				{
-					sPacket packet;
-					size_t n = socket.receiveBytes(&packet, sizeof(sPacket));
+					float T = ofGetElapsedTimef();
 
-					if (n > 0 && packet.iMessage == NAT_FRAMEOFDATA)
+					try
 					{
-						std::shared_ptr<Frame> frame = std::make_shared<Frame>();
+						sPacket packet;
+						size_t n = socket.receiveBytes(&packet, sizeof(sPacket));
 
-						if (unpackFrame((uint8_t*)&packet, n, *frame.get()))
+						if (n > 0 && packet.iMessage == NAT_FRAMEOFDATA)
 						{
-							frame->timestamp = T;
+							std::shared_ptr<Frame> frame = std::make_shared<Frame>();
 
+							if (unpackFrame((uint8_t*)&packet, n, *frame.get()))
 							{
-								std::unique_lock<std::mutex> lock(mutex);
-								if (isRunning)
+								frame->timestamp = T;
+
 								{
-									queue.push_back(frame);
-									if (queue.size() > 100)
-										queue.pop_front();
-									condition.notify_all();
+									std::unique_lock<std::mutex> lock(mutex);
+									if (isRunning)
+									{
+										queue.push_back(frame);
+										if (queue.size() > 100)
+											queue.pop_front();
+										condition.notify_all();
+									}
 								}
+
+								float d = T - last_packet_arrival_time;
+								float r = (1. / d);
+								fps += (r - fps) * 0.1;
+
+								last_packet_arrival_time = T;
+
+								ofNotifyEvent(onFrameReceive, *frame.get());
 							}
-
-							float d = T - last_packet_arrival_time;
-							float r = (1. / d);
-							fps += (r - fps) * 0.1;
-
-							last_packet_arrival_time = T;
-
-							ofNotifyEvent(onFrameReceive, *frame.get());
 						}
 					}
+					catch (const Poco::Net::NetException& e)
+					{
+						ofLogError("ofxNatNet") << e.what();
+					}
 				}
-				catch (const Poco::Net::NetException& e)
+				else
 				{
-					ofLogError("ofxNatNet") << e.what();
+					float T = ofGetElapsedTimef();
+					float d = T - last_packet_arrival_time;
+					float r = (1. / d);
+					fps += (r - fps) * 0.1;
 				}
 			}
-			else
-			{
-				float T = ofGetElapsedTimef();
-				float d = T - last_packet_arrival_time;
-				float r = (1. / d);
-				fps += (r - fps) * 0.1;
-			}
+		}
+		catch (Poco::Net::NetException &e)
+		{
+			ofLogError("ofxNatNet") << e.what();
 		}
 	}
 
