@@ -455,6 +455,7 @@ struct ofxNatNet::InternalThread : public ofThread
 				// params
 				short params = 0; memcpy(&params, ptr, 2); ptr += 2;
 				bool bTrackingValid = params & 0x01; // 0x01 : rigid body was successfully tracked in this frame
+				RB._active = bTrackingValid;
 			}
 			
 		}  // next rigid body
