@@ -29,22 +29,22 @@ const int impl_minor = 9;
 // sender
 struct sSender
 {
-	char szName[MAX_NAMELENGTH];  // sending app's name
-	unsigned char
+	int8_t szName[MAX_NAMELENGTH];  // sending app's name
+	uint8_t
 		Version[4];  // sending app's version [major.minor.build.revision]
-	unsigned char NatNetVersion
+	uint8_t NatNetVersion
 		[4];  // sending app's NatNet version [major.minor.build.revision]
 };
 
 struct sPacket
 {
-	unsigned short iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
-	unsigned short nDataBytes;  // Num bytes in payload
+	uint16_t iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
+	uint16_t nDataBytes;  // Num bytes in payload
 	union
 	{
-		unsigned char cData[MAX_PACKETSIZE];
-		char szData[MAX_PACKETSIZE];
-		unsigned long lData[MAX_PACKETSIZE / 4];
+		uint8_t cData[MAX_PACKETSIZE];
+		int8_t szData[MAX_PACKETSIZE];
+		uint32_t lData[MAX_PACKETSIZE / 4];
 		float fData[MAX_PACKETSIZE / 4];
 		sSender Sender;
 	} Data;  // Payload
@@ -455,6 +455,7 @@ struct ofxNatNet::InternalThread : public ofThread
 				// params
 				short params = 0; memcpy(&params, ptr, 2); ptr += 2;
 				bool bTrackingValid = params & 0x01; // 0x01 : rigid body was successfully tracked in this frame
+				RB._active = bTrackingValid;
 			}
 			
 		}  // next rigid body
