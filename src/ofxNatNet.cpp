@@ -6,7 +6,7 @@
 #include <Poco/Net/NetException.h>
 
 const int impl_major = 2;
-const int impl_minor = 9;
+const int impl_minor = 10;
 
 #define MAX_NAMELENGTH 256
 
