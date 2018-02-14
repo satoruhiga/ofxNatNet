@@ -347,8 +347,10 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	char* unpackRigidBodies(char* ptr, vector<RigidBody>& rigidbodies)
 	{
-		int major = NatNetVersion[0];
-		int minor = NatNetVersion[1];
+        int major = ServerVersion[0];
+        int minor = ServerVersion[1];
+        //it was --> int major = NatNetVersion[0];
+        //it was --> int minor = NatNetVersion[1];
 		
 		ofQuaternion rot = transform.getRotate();
 
@@ -464,8 +466,10 @@ struct ofxNatNet::InternalThread : public ofThread
 	
 	void Unpack(char* pData)
 	{
-		int major = NatNetVersion[0];
-		int minor = NatNetVersion[1];
+        int major = ServerVersion[0];
+        int minor = ServerVersion[1];
+        //it was --> int major = NatNetVersion[0];
+        //it was --> int minor = NatNetVersion[1];
 		
 		if (major == 0 && minor == 0)
 		{
