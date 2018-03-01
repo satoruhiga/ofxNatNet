@@ -134,8 +134,10 @@ struct ofxNatNet::InternalThread : public ofThread
 				data_socket.setBlocking(false);
 
 				data_socket.setReceiveBufferSize(0x100000);
-				assert(data_socket.getReceiveBufferSize() == 0x100000);
-			}
+#ifndef TARGET_LINUX    //on linux buffer sizes are restricted so this will fail
+                assert(data_socket.getReceiveBufferSize() == 0x100000);
+#endif
+            }
 
 			for (int i = 0; i < 4; i++)
 			{
@@ -148,14 +150,18 @@ struct ofxNatNet::InternalThread : public ofThread
 				command_socket.bind(my_addr, true);
 				command_socket.setReceiveBufferSize(0x100000);
 				command_socket.setBroadcast(true);
-				assert(command_socket.getReceiveBufferSize() == 0x100000);
+#ifndef TARGET_LINUX    //on linux buffer sizes are restricted so this will fail
+                assert(command_socket.getReceiveBufferSize() == 0x100000);
+#endif
 			}
 
 			{
 				Poco::Net::SocketAddress target_addr(target_host, command_port);
 				command_socket.connect(target_addr);
 				command_socket.setSendBufferSize(0x100000);
-				assert(command_socket.getSendBufferSize() == 0x100000);
+#ifndef TARGET_LINUX    //on linux buffer sizes are restricted so this will fail
+                assert(command_socket.getSendBufferSize() == 0x100000);
+#endif
 			}
 
 			startThread();
