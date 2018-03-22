@@ -38,13 +38,13 @@ struct sSender
 
 struct sPacket
 {
-	unsigned short iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
-	unsigned short nDataBytes;  // Num bytes in payload
+    uint8_t iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
+    uint8_t nDataBytes;  // Num bytes in payload
 	union
 	{
 		unsigned char cData[MAX_PACKETSIZE];
 		char szData[MAX_PACKETSIZE];
-		unsigned long lData[MAX_PACKETSIZE / 4];
+        uint32_t lData[MAX_PACKETSIZE / 4];
 		float fData[MAX_PACKETSIZE / 4];
 		sSender Sender;
 	} Data;  // Payload
@@ -67,8 +67,8 @@ struct ofxNatNet::InternalThread : public ofThread
 	Poco::Net::MulticastSocket data_socket;
 	Poco::Net::DatagramSocket command_socket;
 
-	int NatNetVersion[4];
-	int ServerVersion[4];
+    unsigned char NatNetVersion[4];
+    unsigned char ServerVersion[4];
 
 	size_t frame_number;
 	float latency;
@@ -164,9 +164,10 @@ struct ofxNatNet::InternalThread : public ofThread
 #endif
 			}
 
-			startThread();
+            sendPing();
 
-			sendPing();
+            startThread();
+
 		}
 		catch (const std::exception& e)
 		{
@@ -297,14 +298,15 @@ struct ofxNatNet::InternalThread : public ofThread
 					if (n > 0 && packet.iMessage == NAT_PINGRESPONSE)
 					{
 						connected = true;
-						
-						for (int i = 0; i < 4; i++)
+
+                        for (int i = 0; i < 4; i++)
 						{
-							NatNetVersion[i] = (int)packet.Data.Sender.NatNetVersion[i];
-							ServerVersion[i] = (int)packet.Data.Sender.Version[i];
-						}
+                            NatNetVersion[i] = packet.Data.Sender.NatNetVersion[i];
+                            ServerVersion[i] = packet.Data.Sender.Version[i];
+                        }
 
 						printf("connected. NatNet: v%i.%i, Server: v%i.%i\n", NatNetVersion[0], NatNetVersion[1], ServerVersion[0], ServerVersion[1]);
+                        fflush(stdout);
 
 						return;
 					}
