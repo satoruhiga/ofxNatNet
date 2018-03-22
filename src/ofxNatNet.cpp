@@ -25,26 +25,31 @@ const int impl_minor = 9;
 #define UNDEFINED 999999.9999
 
 #define MAX_PACKETSIZE 100000
+// This is needed to enhance portability for struct padding
+// a compiler will pad the struct at will to optimize it
+// for the compiled architecture
+// ref: https://forums.naturalpoint.com/viewtopic.php?f=59&t=13272
+#pragma pack(push,1)
 
 // sender
 struct sSender
 {
-	char szName[MAX_NAMELENGTH];  // sending app's name
-	unsigned char
+    char szName[MAX_NAMELENGTH];  // sending app's name
+    uint8_t
 		Version[4];  // sending app's version [major.minor.build.revision]
-	unsigned char NatNetVersion
+    uint8_t NatNetVersion
 		[4];  // sending app's NatNet version [major.minor.build.revision]
 };
 
 struct sPacket
 {
-	unsigned short iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
-	unsigned short nDataBytes;  // Num bytes in payload
+    uint16_t iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
+    uint16_t nDataBytes;  // Num bytes in payload
 	union
 	{
-		unsigned char cData[MAX_PACKETSIZE];
-		char szData[MAX_PACKETSIZE];
-		unsigned long lData[MAX_PACKETSIZE / 4];
+        unsigned char cData[MAX_PACKETSIZE];
+        char szData[MAX_PACKETSIZE];
+        uint64_t lData[MAX_PACKETSIZE / 4];
 		float fData[MAX_PACKETSIZE / 4];
 		sSender Sender;
 	} Data;  // Payload
@@ -67,8 +72,8 @@ struct ofxNatNet::InternalThread : public ofThread
 	Poco::Net::MulticastSocket data_socket;
 	Poco::Net::DatagramSocket command_socket;
 
-	int NatNetVersion[4];
-	int ServerVersion[4];
+    unsigned char NatNetVersion[4];
+    unsigned char ServerVersion[4];
 
 	size_t frame_number;
 	float latency;
@@ -164,9 +169,10 @@ struct ofxNatNet::InternalThread : public ofThread
 #endif
 			}
 
-			startThread();
+            sendPing();
 
-			sendPing();
+            startThread();
+
 		}
 		catch (const std::exception& e)
 		{
@@ -294,17 +300,19 @@ struct ofxNatNet::InternalThread : public ofThread
 					int n = command_socket.receiveBytes((char*)&packet,
 														sizeof(sPacket));
 					
+
 					if (n > 0 && packet.iMessage == NAT_PINGRESPONSE)
 					{
 						connected = true;
-						
-						for (int i = 0; i < 4; i++)
+
+                        for (int i = 0; i < 4; i++)
 						{
-							NatNetVersion[i] = (int)packet.Data.Sender.NatNetVersion[i];
-							ServerVersion[i] = (int)packet.Data.Sender.Version[i];
-						}
+                            NatNetVersion[i] = packet.Data.Sender.NatNetVersion[i];
+                            ServerVersion[i] = packet.Data.Sender.Version[i];
+                        }
 
 						printf("connected. NatNet: v%i.%i, Server: v%i.%i\n", NatNetVersion[0], NatNetVersion[1], ServerVersion[0], ServerVersion[1]);
+                        fflush(stdout);
 
 						return;
 					}
@@ -353,8 +361,8 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	char* unpackRigidBodies(char* ptr, vector<RigidBody>& rigidbodies)
 	{
-        int major = ServerVersion[0];
-        int minor = ServerVersion[1];
+        int major = NatNetVersion[0];
+        int minor = NatNetVersion[1];
         //it was --> int major = NatNetVersion[0];
         //it was --> int minor = NatNetVersion[1];
 		
@@ -472,16 +480,16 @@ struct ofxNatNet::InternalThread : public ofThread
 	
 	void Unpack(char* pData)
 	{
-        int major = ServerVersion[0];
-        int minor = ServerVersion[1];
+        int major = NatNetVersion[0];
+        int minor = NatNetVersion[1];
         //it was --> int major = NatNetVersion[0];
         //it was --> int minor = NatNetVersion[1];
 		
-		if (major == 0 && minor == 0)
+        if (major == 0 && minor == 0)
 		{
 			ofLogError("ofxNatNet") << "initialize failed";
 			return;
-		}
+        }
 		
 		if (major > impl_major || minor > impl_minor)
 		{
