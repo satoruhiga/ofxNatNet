@@ -25,26 +25,31 @@ const int impl_minor = 9;
 #define UNDEFINED 999999.9999
 
 #define MAX_PACKETSIZE 100000
+// This is needed to enhance portability for struct padding
+// a compiler will pad the struct at will to optimize it
+// for the compiled architecture
+// ref: https://forums.naturalpoint.com/viewtopic.php?f=59&t=13272
+#pragma pack(push,1)
 
 // sender
 struct sSender
 {
-	char szName[MAX_NAMELENGTH];  // sending app's name
-	unsigned char
+    char szName[MAX_NAMELENGTH];  // sending app's name
+    uint8_t
 		Version[4];  // sending app's version [major.minor.build.revision]
-	unsigned char NatNetVersion
+    uint8_t NatNetVersion
 		[4];  // sending app's NatNet version [major.minor.build.revision]
 };
 
 struct sPacket
 {
-    uint8_t iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
-    uint8_t nDataBytes;  // Num bytes in payload
+    uint16_t iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
+    uint16_t nDataBytes;  // Num bytes in payload
 	union
 	{
-		unsigned char cData[MAX_PACKETSIZE];
-		char szData[MAX_PACKETSIZE];
-        uint32_t lData[MAX_PACKETSIZE / 4];
+        unsigned char cData[MAX_PACKETSIZE];
+        char szData[MAX_PACKETSIZE];
+        uint64_t lData[MAX_PACKETSIZE / 4];
 		float fData[MAX_PACKETSIZE / 4];
 		sSender Sender;
 	} Data;  // Payload
@@ -295,6 +300,7 @@ struct ofxNatNet::InternalThread : public ofThread
 					int n = command_socket.receiveBytes((char*)&packet,
 														sizeof(sPacket));
 					
+
 					if (n > 0 && packet.iMessage == NAT_PINGRESPONSE)
 					{
 						connected = true;
@@ -355,8 +361,8 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	char* unpackRigidBodies(char* ptr, vector<RigidBody>& rigidbodies)
 	{
-        int major = ServerVersion[0];
-        int minor = ServerVersion[1];
+        int major = NatNetVersion[0];
+        int minor = NatNetVersion[1];
         //it was --> int major = NatNetVersion[0];
         //it was --> int minor = NatNetVersion[1];
 		
@@ -474,16 +480,16 @@ struct ofxNatNet::InternalThread : public ofThread
 	
 	void Unpack(char* pData)
 	{
-        int major = ServerVersion[0];
-        int minor = ServerVersion[1];
+        int major = NatNetVersion[0];
+        int minor = NatNetVersion[1];
         //it was --> int major = NatNetVersion[0];
         //it was --> int minor = NatNetVersion[1];
 		
-		if (major == 0 && minor == 0)
+        if (major == 0 && minor == 0)
 		{
 			ofLogError("ofxNatNet") << "initialize failed";
 			return;
-		}
+        }
 		
 		if (major > impl_major || minor > impl_minor)
 		{
