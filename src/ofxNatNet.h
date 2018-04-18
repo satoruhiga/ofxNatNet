@@ -132,8 +132,8 @@ public:
 		return rigidbodies.find(id) != rigidbodies.end();
 	}
     /*
-     * Returns sets the rigidbody RB to the rigidbody with the given id
-     * return false if the rigidbody is not available
+     * Sets the rigidbody RB to the rigidbody with the given id
+     * returns false if the rigidbody is not available
      */
 	inline const bool getRigidBody(int id, RigidBody& RB)
 	{
