@@ -107,17 +107,34 @@ public:
 		return filterd_markers[index];
 	}
 
+    /*
+     * Returns the amount of rigidbody descriptions which are received by sendRequestDescription()
+    */
     inline const size_t getNumRigidBodyDescriptions() { return rigidbody_descs.size(); }
+    /*
+     * Returns the amount of rigidbodies received through the data stream
+     */
     inline const size_t getNumRigidBody() { return rigidbodies_arr.size(); }
-	inline const RigidBody& getRigidBodyAt(int index)
+
+    /*
+     * Return the rigidbody at the index in the rigidbody vector
+     */
+    inline const RigidBody& getRigidBodyAt(int index)
 	{
         return rigidbodies_arr[index];
 	}
 
+    /*
+     * Returns true if a rigidbody with given id is available
+     */
 	inline const bool hasRigidBody(int id)
 	{
 		return rigidbodies.find(id) != rigidbodies.end();
 	}
+    /*
+     * Returns sets the rigidbody RB to the rigidbody with the given id
+     * return false if the rigidbody is not available
+     */
 	inline const bool getRigidBody(int id, RigidBody& RB)
 	{
 		if (!hasRigidBody(id)) return false;
