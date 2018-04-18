@@ -107,16 +107,34 @@ public:
 		return filterd_markers[index];
 	}
 
-	inline const size_t getNumRigidBody() { return rigidbodies.size(); }
-	inline const RigidBody& getRigidBodyAt(int index)
+    /*
+     * Returns the amount of rigidbody descriptions which are received by sendRequestDescription()
+    */
+    inline const size_t getNumRigidBodyDescriptions() { return rigidbody_descs.size(); }
+    /*
+     * Returns the amount of rigidbodies received through the data stream
+     */
+    inline const size_t getNumRigidBody() { return rigidbodies_arr.size(); }
+
+    /*
+     * Return the rigidbody at the index in the rigidbody vector
+     */
+    inline const RigidBody& getRigidBodyAt(int index)
 	{
-		return *rigidbodies_arr[index];
+        return rigidbodies_arr[index];
 	}
 
+    /*
+     * Returns true if a rigidbody with given id is available
+     */
 	inline const bool hasRigidBody(int id)
 	{
 		return rigidbodies.find(id) != rigidbodies.end();
 	}
+    /*
+     * Sets the rigidbody RB to the rigidbody with the given id
+     * returns false if the rigidbody is not available
+     */
 	inline const bool getRigidBody(int id, RigidBody& RB)
 	{
 		if (!hasRigidBody(id)) return false;
@@ -168,7 +186,7 @@ protected:
 	vector<Marker> markers;
 
 	map<int, RigidBody> rigidbodies;
-	vector<RigidBody*> rigidbodies_arr;
+    vector<RigidBody> rigidbodies_arr;
 	
 	map<int, Skeleton> skeletons;
 	vector<Skeleton*> skeletons_arr;
