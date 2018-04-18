@@ -107,6 +107,7 @@ public:
 		return filterd_markers[index];
 	}
 
+    inline const size_t getNumRigidBodyDescriptions() { return rigidbody_descs.size(); }
 	inline const size_t getNumRigidBody() { return rigidbodies.size(); }
 	inline const RigidBody& getRigidBodyAt(int index)
 	{

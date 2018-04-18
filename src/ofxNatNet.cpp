@@ -81,17 +81,17 @@ struct ofxNatNet::InternalThread : public ofThread
 	float buffer_time;
 	queue<Packet> buffer;
 	
-	vector<ofxNatNet::Marker> markers;
-	vector<ofxNatNet::Marker> filterd_markers;
+    vector<ofxNatNet::Marker> _markers;
+    vector<ofxNatNet::Marker> _filterd_markers;
 
-	map<int, ofxNatNet::RigidBody> rigidbodies;
+    map<int, ofxNatNet::RigidBody> _rigidbodies;
 	
-	vector<vector<ofxNatNet::Marker> > markers_set;
-	map<int, ofxNatNet::Skeleton> skeletons;
+    vector<vector<ofxNatNet::Marker> > _markers_set;
+    map<int, ofxNatNet::Skeleton> _skeletons;
 
-    vector<RigidBodyDescription> rigidbody_descs;
-    vector<SkeletonDescription> skeleton_descs;
-    vector<MarkerSetDescription> markerset_descs;
+    vector<RigidBodyDescription> _rigidbody_descs;
+    vector<SkeletonDescription> _skeleton_descs;
+    vector<MarkerSetDescription> _markerset_descs;
     
 	float last_packet_arrival_time;
 	float data_rate;
@@ -339,7 +339,7 @@ struct ofxNatNet::InternalThread : public ofThread
 		memcpy(&nMarkers, ptr, 4);
 		ptr += 4;
 		
-		markers.resize(nMarkers);
+        markers.resize(nMarkers);
 		
 		for (int j = 0; j < nMarkers; j++)
 		{
@@ -676,8 +676,8 @@ struct ofxNatNet::InternalThread : public ofThread
 			if (duplicated_point_removal_distance > 0)
 			{
 				map<int, ofxNatNet::RigidBody>::iterator it =
-					this->rigidbodies.begin();
-				while (it != this->rigidbodies.end())
+                    this->_rigidbodies.begin();
+                while (it != this->_rigidbodies.end())
 				{
 					ofxNatNet::RigidBody& RB = it->second;
 
@@ -699,21 +699,21 @@ struct ofxNatNet::InternalThread : public ofThread
 			{
 				this->latency = latency;
 				this->frame_number = frame_number;
-				this->markers_set = markers_set;
-				this->markers = markers;
-				this->filterd_markers = filterd_markers;
+                this->_markers_set = markers_set;
+                this->_markers = markers;
+                this->_filterd_markers = filterd_markers;
 
-				{
+                {
 					for (int i = 0; i < rigidbodies.size(); i++) {
 						RigidBody &RB = rigidbodies[i];
-						RigidBody &tRB = this->rigidbodies[RB.id];
+                        RigidBody &tRB = this->_rigidbodies[RB.id];
 						tRB = RB;
 					}
 				}
 				{
 					for (int i = 0; i < skeletons.size(); i++) {
 						Skeleton &S = skeletons[i];
-						Skeleton &tS = this->skeletons[S.id];
+                        Skeleton &tS = this->_skeletons[S.id];
 						tS = S;
 					}
 				}
@@ -871,9 +871,9 @@ struct ofxNatNet::InternalThread : public ofThread
             // copy to mainthread
             if (lock())
             {
-                this->markerset_descs = markerset_descs;
-                this->rigidbody_descs = rigidbody_descs;
-                this->skeleton_descs = skeleton_descs;
+                this->_markerset_descs = markerset_descs;
+                this->_rigidbody_descs = rigidbody_descs;
+                this->_skeleton_descs = skeleton_descs;
                 unlock();
             }
 		}
@@ -913,36 +913,36 @@ void ofxNatNet::update()
 		
 		if (isConnected())
 		{
-			markers_set = thread->markers_set;
-			markers = thread->markers;
-			filterd_markers = thread->filterd_markers;
+            markers_set = thread->_markers_set;
+            markers = thread->_markers;
+            filterd_markers = thread->_filterd_markers;
 			
 			{
-				rigidbodies = thread->rigidbodies;
+                rigidbodies = thread->_rigidbodies;
 				rigidbodies_arr.clear();
 				
-				map<int, RigidBody>::iterator it = thread->rigidbodies.begin();
-				while (it != thread->rigidbodies.end())
+                map<int, RigidBody>::iterator it = thread->_rigidbodies.begin();
+                while (it != thread->_rigidbodies.end())
 				{
 					rigidbodies_arr.push_back(&it->second);
 					it++;
 				}
 			}
 			{
-				skeletons = thread->skeletons;
+                skeletons = thread->_skeletons;
 				skeletons_arr.clear();
 				
-				map<int, Skeleton>::iterator it = thread->skeletons.begin();
-				while (it != thread->skeletons.end())
+                map<int, Skeleton>::iterator it = thread->_skeletons.begin();
+                while (it != thread->_skeletons.end())
 				{
 					skeletons_arr.push_back(&it->second);
 					it++;
 				}
 			}
             
-            markerset_descs = thread->markerset_descs;
-            rigidbody_descs = thread->rigidbody_descs;
-            skeleton_descs = thread->skeleton_descs;
+            markerset_descs = thread->_markerset_descs;
+            rigidbody_descs = thread->_rigidbody_descs;
+            skeleton_descs = thread->_skeleton_descs;
 		}
 		else
 		{
