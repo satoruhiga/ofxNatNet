@@ -108,10 +108,10 @@ public:
 	}
 
     inline const size_t getNumRigidBodyDescriptions() { return rigidbody_descs.size(); }
-	inline const size_t getNumRigidBody() { return rigidbodies.size(); }
+    inline const size_t getNumRigidBody() { return rigidbodies_arr.size(); }
 	inline const RigidBody& getRigidBodyAt(int index)
 	{
-		return *rigidbodies_arr[index];
+        return rigidbodies_arr[index];
 	}
 
 	inline const bool hasRigidBody(int id)
@@ -169,7 +169,7 @@ protected:
 	vector<Marker> markers;
 
 	map<int, RigidBody> rigidbodies;
-	vector<RigidBody*> rigidbodies_arr;
+    vector<RigidBody> rigidbodies_arr;
 	
 	map<int, Skeleton> skeletons;
 	vector<Skeleton*> skeletons_arr;

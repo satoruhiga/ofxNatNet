@@ -84,6 +84,7 @@ struct ofxNatNet::InternalThread : public ofThread
     vector<ofxNatNet::Marker> _markers;
     vector<ofxNatNet::Marker> _filterd_markers;
 
+    vector<ofxNatNet::RigidBody> _rigidbodies_arr;
     map<int, ofxNatNet::RigidBody> _rigidbodies;
 	
     vector<vector<ofxNatNet::Marker> > _markers_set;
@@ -371,7 +372,7 @@ struct ofxNatNet::InternalThread : public ofThread
 		int nRigidBodies = 0;
 		memcpy(&nRigidBodies, ptr, 4);
 		ptr += 4;
-		
+
         ref_rigidbodies.resize(nRigidBodies);
 		
 		for (int j = 0; j < nRigidBodies; j++)
@@ -702,7 +703,8 @@ struct ofxNatNet::InternalThread : public ofThread
                 this->_markers_set = tmp_markers_set;
                 this->_markers = tmp_markers;
                 this->_filterd_markers = tmp_filterd_markers;
-
+                this->_rigidbodies_arr = tmp_rigidbodies;
+                // fill the rigidbodies map
                 {
                     for (int i = 0; i < tmp_rigidbodies.size(); i++) {
                         RigidBody &RB = tmp_rigidbodies[i];
@@ -920,13 +922,8 @@ void ofxNatNet::update()
 			{
                 rigidbodies = thread->_rigidbodies;
 				rigidbodies_arr.clear();
-				
-                map<int, RigidBody>::iterator it = thread->_rigidbodies.begin();
-                while (it != thread->_rigidbodies.end())
-				{
-					rigidbodies_arr.push_back(&it->second);
-					it++;
-				}
+                rigidbodies_arr = thread->_rigidbodies_arr;
+
 			}
 			{
                 skeletons = thread->_skeletons;
