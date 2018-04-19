@@ -88,6 +88,7 @@ struct ofxNatNet::InternalThread : public ofThread
     map<int, ofxNatNet::RigidBody> _rigidbodies;
 	
     vector<vector<ofxNatNet::Marker> > _markers_set;
+    vector<ofxNatNet::Skeleton> _skeletons_arr;
     map<int, ofxNatNet::Skeleton> _skeletons;
 
     vector<RigidBodyDescription> _rigidbody_descs;
@@ -704,6 +705,7 @@ struct ofxNatNet::InternalThread : public ofThread
                 this->_markers = tmp_markers;
                 this->_filterd_markers = tmp_filterd_markers;
                 this->_rigidbodies_arr = tmp_rigidbodies;
+                this->_skeletons_arr = tmp_skeletons;
                 // fill the rigidbodies map
                 {
                     for (int i = 0; i < tmp_rigidbodies.size(); i++) {
@@ -928,13 +930,8 @@ void ofxNatNet::update()
 			{
                 skeletons = thread->_skeletons;
 				skeletons_arr.clear();
-				
-                map<int, Skeleton>::iterator it = thread->_skeletons.begin();
-                while (it != thread->_skeletons.end())
-				{
-					skeletons_arr.push_back(&it->second);
-					it++;
-				}
+                skeletons_arr = thread->_skeletons_arr;
+                
 			}
             
             markerset_descs = thread->_markerset_descs;
