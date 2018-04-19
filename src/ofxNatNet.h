@@ -142,10 +142,10 @@ public:
 		return true;
 	}
 	
-	inline const size_t getNumSkeleton() { return skeletons.size(); }
+	inline const size_t getNumSkeleton() { return skeletons_arr.size(); }
 	inline const Skeleton& getSkeletonAt(int index)
 	{
-		return *skeletons_arr[index];
+		return skeletons_arr[index];
 	}
 	
 	inline const bool hasSkeleton(int id)
@@ -189,7 +189,7 @@ protected:
     vector<RigidBody> rigidbodies_arr;
 	
 	map<int, Skeleton> skeletons;
-	vector<Skeleton*> skeletons_arr;
+	vector<Skeleton> skeletons_arr;
 
 	vector<RigidBodyDescription> rigidbody_descs;
 	vector<SkeletonDescription> skeleton_descs;
