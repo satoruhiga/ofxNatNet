@@ -117,8 +117,7 @@ struct ofxNatNet::InternalThread : public ofThread
 			{
 				Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(),
 											  data_port);
-				
-				try
+				                try
 				{
 					interface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(interface_name));
 				}
@@ -127,6 +126,7 @@ struct ofxNatNet::InternalThread : public ofThread
 					interface = Poco::Net::NetworkInterface::forName(
 						interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
 				}
+                
 
 				data_socket.bind(addr, true);
 				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group),
@@ -147,7 +147,14 @@ struct ofxNatNet::InternalThread : public ofThread
 			}
 
 			{
-				Poco::Net::SocketAddress my_addr(interface.address(), 0);
+
+                
+                
+#ifndef TARGET_OS_X      //on OSX interface.address() returns an ipv6 address 
+                Poco::Net::SocketAddress my_addr("0.0.0.0", 0);
+#else
+                Poco::Net::SocketAddress my_addr(interface.address(), 0);
+#endif
 				command_socket.bind(my_addr, true);
 				command_socket.setReceiveBufferSize(0x100000);
 				command_socket.setBroadcast(true);
