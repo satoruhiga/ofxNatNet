@@ -153,7 +153,7 @@ struct ofxNatNet::InternalThread : public ofThread
 			}
 
 			{
-				Poco::Net::SocketAddress my_addr(interface.address(), 0);
+				Poco::Net::SocketAddress my_addr("0.0.0.0", 0);
 				command_socket.bind(my_addr, true);
 				command_socket.setReceiveBufferSize(0x100000);
 				command_socket.setBroadcast(true);
