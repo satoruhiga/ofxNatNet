@@ -1,6 +1,11 @@
 #pragma once
 
 #include "ofMain.h"
+#include <Poco/Net/SocketAddress.h>
+#include <Poco/Net/DatagramSocket.h>
+#include <Poco/Net/MulticastSocket.h>
+#include <Poco/Net/NetworkInterface.h>
+#include <Poco/Net/NetException.h>
 
 class ofxNatNet
 {
@@ -174,6 +179,7 @@ public:
 	inline const vector<RigidBodyDescription> getRigidBodyDescriptions() { return rigidbody_descs; }
 	inline const vector<SkeletonDescription> getSkeletonDescriptions() { return skeleton_descs; }
     
+    static map<string, Poco::Net::IPAddress> getNetworkInterfaces();
 protected:
 	InternalThread* thread;
 
