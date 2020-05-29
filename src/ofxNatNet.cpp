@@ -62,7 +62,7 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	int command_port;
 
-	Poco::Net::NetworkInterface interface;
+	Poco::Net::NetworkInterface iface;
 	Poco::Net::MulticastSocket data_socket;
 	Poco::Net::DatagramSocket command_socket;
 
@@ -98,7 +98,7 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	string error_str;
 
-	InternalThread(string interface_name, string target_host,
+	InternalThread(string iface_name, string target_host,
 				   string multicast_group, int command_port, int data_port)
 		: connected(false)
 		, target_host(target_host)
@@ -119,18 +119,18 @@ struct ofxNatNet::InternalThread : public ofThread
 											  data_port);
 				                try
 				{
-					interface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(interface_name));
+					iface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(iface_name));
 				}
 				catch (const Poco::Net::InvalidAddressException& e)
 				{
-					interface = Poco::Net::NetworkInterface::forName(
-						interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
+					iface = Poco::Net::NetworkInterface::forName(
+						iface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
 				}
                 
 
 				data_socket.bind(addr, true);
 				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group),
-									  interface);
+									  iface);
 
 				data_socket.setBlocking(false);
 
@@ -153,7 +153,7 @@ struct ofxNatNet::InternalThread : public ofThread
 #ifndef TARGET_OS_X      //on OSX interface.address() returns an ipv6 address 
                 Poco::Net::SocketAddress my_addr("0.0.0.0", 0);
 #else
-                Poco::Net::SocketAddress my_addr(interface.address(), 0);
+                Poco::Net::SocketAddress my_addr(iface.address(), 0);
 #endif
 				command_socket.bind(my_addr, true);
 				command_socket.setReceiveBufferSize(0x100000);
@@ -889,11 +889,11 @@ struct ofxNatNet::InternalThread : public ofThread
 	}
 };
 
-void ofxNatNet::setup(string interface_name, string target_host,
+void ofxNatNet::setup(string iface_name, string target_host,
 					  string multicast_group, int command_port, int data_port)
 {
 	dispose();
-	thread = new InternalThread(interface_name, target_host, multicast_group,
+	thread = new InternalThread(iface_name, target_host, multicast_group,
 								command_port, data_port);
 }
 
