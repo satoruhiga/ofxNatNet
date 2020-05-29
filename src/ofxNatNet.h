@@ -77,7 +77,7 @@ public:
 	}
 	~ofxNatNet() { dispose(); }
 
-	void setup(string interface_name, string target_host,
+	void setup(string iface_name, string target_host,
 			   string multicast_group = "239.255.42.99",
 			   int command_port = 1510, int data_port = 1511);
 	void update();
