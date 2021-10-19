@@ -1,13 +1,7 @@
 #include "ofxNatNet.h"
 
-#include <Poco/Net/SocketAddress.h>
-#include <Poco/Net/DatagramSocket.h>
-#include <Poco/Net/MulticastSocket.h>
-#include <Poco/Net/NetworkInterface.h>
-#include <Poco/Net/NetException.h>
-
-const int impl_major = 2;
-const int impl_minor = 9;
+const int impl_major = 3;
+const int impl_minor = 1;
 
 #define MAX_NAMELENGTH 256
 
@@ -25,26 +19,31 @@ const int impl_minor = 9;
 #define UNDEFINED 999999.9999
 
 #define MAX_PACKETSIZE 100000
+// This is needed to enhance portability for struct padding
+// a compiler will pad the struct at will to optimize it
+// for the compiled architecture
+// ref: https://forums.naturalpoint.com/viewtopic.php?f=59&t=13272
+#pragma pack(push,1)
 
 // sender
 struct sSender
 {
-	int8_t szName[MAX_NAMELENGTH];  // sending app's name
-	uint8_t
+    char szName[MAX_NAMELENGTH];  // sending app's name
+    uint8_t
 		Version[4];  // sending app's version [major.minor.build.revision]
-	uint8_t NatNetVersion
+    uint8_t NatNetVersion
 		[4];  // sending app's NatNet version [major.minor.build.revision]
 };
 
 struct sPacket
 {
-	uint16_t iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
-	uint16_t nDataBytes;  // Num bytes in payload
+    uint16_t iMessage;	// message ID (e.g. NAT_FRAMEOFDATA)
+    uint16_t nDataBytes;  // Num bytes in payload
 	union
 	{
-		uint8_t cData[MAX_PACKETSIZE];
-		int8_t szData[MAX_PACKETSIZE];
-		uint32_t lData[MAX_PACKETSIZE / 4];
+        unsigned char cData[MAX_PACKETSIZE];
+        char szData[MAX_PACKETSIZE];
+        uint64_t lData[MAX_PACKETSIZE / 4];
 		float fData[MAX_PACKETSIZE / 4];
 		sSender Sender;
 	} Data;  // Payload
@@ -63,12 +62,12 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	int command_port;
 
-	Poco::Net::NetworkInterface interface;
+	Poco::Net::NetworkInterface iface;
 	Poco::Net::MulticastSocket data_socket;
 	Poco::Net::DatagramSocket command_socket;
 
-	int NatNetVersion[4];
-	int ServerVersion[4];
+    unsigned char NatNetVersion[4];
+    unsigned char ServerVersion[4];
 
 	size_t frame_number;
 	float latency;
@@ -76,17 +75,19 @@ struct ofxNatNet::InternalThread : public ofThread
 	float buffer_time;
 	queue<Packet> buffer;
 	
-	vector<ofxNatNet::Marker> markers;
-	vector<ofxNatNet::Marker> filterd_markers;
+    vector<ofxNatNet::Marker> _markers;
+    vector<ofxNatNet::Marker> _filterd_markers;
 
-	map<int, ofxNatNet::RigidBody> rigidbodies;
+    vector<ofxNatNet::RigidBody> _rigidbodies_arr;
+    map<int, ofxNatNet::RigidBody> _rigidbodies;
 	
-	vector<vector<ofxNatNet::Marker> > markers_set;
-	map<int, ofxNatNet::Skeleton> skeletons;
+    vector<vector<ofxNatNet::Marker> > _markers_set;
+    vector<ofxNatNet::Skeleton> _skeletons_arr;
+    map<int, ofxNatNet::Skeleton> _skeletons;
 
-    vector<RigidBodyDescription> rigidbody_descs;
-    vector<SkeletonDescription> skeleton_descs;
-    vector<MarkerSetDescription> markerset_descs;
+    vector<RigidBodyDescription> _rigidbody_descs;
+    vector<SkeletonDescription> _skeleton_descs;
+    vector<MarkerSetDescription> _markerset_descs;
     
 	float last_packet_arrival_time;
 	float data_rate;
@@ -97,7 +98,7 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	string error_str;
 
-	InternalThread(string interface_name, string target_host,
+	InternalThread(string iface_name, string target_host,
 				   string multicast_group, int command_port, int data_port)
 		: connected(false)
 		, target_host(target_host)
@@ -116,26 +117,28 @@ struct ofxNatNet::InternalThread : public ofThread
 			{
 				Poco::Net::SocketAddress addr(Poco::Net::IPAddress::wildcard(),
 											  data_port);
-				
-				try
+				                try
 				{
-					interface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(interface_name));
+					iface = Poco::Net::NetworkInterface::forAddress(Poco::Net::IPAddress(iface_name));
 				}
 				catch (const Poco::Net::InvalidAddressException& e)
 				{
-					interface = Poco::Net::NetworkInterface::forName(
-						interface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
+					iface = Poco::Net::NetworkInterface::forName(
+						iface_name, Poco::Net::NetworkInterface::IPv4_ONLY);
 				}
+                
 
 				data_socket.bind(addr, true);
 				data_socket.joinGroup(Poco::Net::IPAddress(multicast_group),
-									  interface);
+									  iface);
 
 				data_socket.setBlocking(false);
 
 				data_socket.setReceiveBufferSize(0x100000);
-				assert(data_socket.getReceiveBufferSize() == 0x100000);
-			}
+#ifndef TARGET_LINUX    //on linux buffer sizes are restricted so this will fail
+                assert(data_socket.getReceiveBufferSize() == 0x100000);
+#endif
+            }
 
 			for (int i = 0; i < 4; i++)
 			{
@@ -144,23 +147,37 @@ struct ofxNatNet::InternalThread : public ofThread
 			}
 
 			{
-				Poco::Net::SocketAddress my_addr(interface.address(), 0);
+
+                
+                
+#ifndef TARGET_OS_X      //on OSX interface.address() returns an ipv6 address 
+                Poco::Net::SocketAddress my_addr("0.0.0.0", 0);
+#else
+                Poco::Net::SocketAddress my_addr(iface.address(), 0);
+#endif
 				command_socket.bind(my_addr, true);
 				command_socket.setReceiveBufferSize(0x100000);
 				command_socket.setBroadcast(true);
-				assert(command_socket.getReceiveBufferSize() == 0x100000);
+#ifndef TARGET_LINUX    //on linux buffer sizes are restricted so this will fail
+                assert(command_socket.getReceiveBufferSize() == 0x100000);
+#endif
 			}
 
 			{
 				Poco::Net::SocketAddress target_addr(target_host, command_port);
 				command_socket.connect(target_addr);
 				command_socket.setSendBufferSize(0x100000);
-				assert(command_socket.getSendBufferSize() == 0x100000);
+#ifndef TARGET_LINUX    //on linux buffer sizes are restricted so this will fail
+                assert(command_socket.getSendBufferSize() == 0x100000);
+#endif
 			}
 
-			startThread();
+            sendPing();
+            ofSleepMillis(100);
+            sendRequestDescription();
 
-			sendPing();
+            startThread();
+
 		}
 		catch (const std::exception& e)
 		{
@@ -288,17 +305,19 @@ struct ofxNatNet::InternalThread : public ofThread
 					int n = command_socket.receiveBytes((char*)&packet,
 														sizeof(sPacket));
 					
+
 					if (n > 0 && packet.iMessage == NAT_PINGRESPONSE)
 					{
 						connected = true;
-						
-						for (int i = 0; i < 4; i++)
+
+                        for (int i = 0; i < 4; i++)
 						{
-							NatNetVersion[i] = (int)packet.Data.Sender.NatNetVersion[i];
-							ServerVersion[i] = (int)packet.Data.Sender.Version[i];
-						}
+                            NatNetVersion[i] = packet.Data.Sender.NatNetVersion[i];
+                            ServerVersion[i] = packet.Data.Sender.Version[i];
+                        }
 
 						printf("connected. NatNet: v%i.%i, Server: v%i.%i\n", NatNetVersion[0], NatNetVersion[1], ServerVersion[0], ServerVersion[1]);
+                        fflush(stdout);
 
 						return;
 					}
@@ -319,13 +338,13 @@ struct ofxNatNet::InternalThread : public ofThread
 		Unpack((char*)&packet);
 	}
 	
-	char* unpackMarkerSet(char* ptr, vector<Marker>& markers)
+    char* unpackMarkerSet(char* ptr, vector<Marker>& ref_markers)
 	{
-		int nMarkers = 0;
+		int32_t nMarkers = 0;
 		memcpy(&nMarkers, ptr, 4);
 		ptr += 4;
 		
-		markers.resize(nMarkers);
+        ref_markers.resize(nMarkers);
 		
 		for (int j = 0; j < nMarkers; j++)
 		{
@@ -339,33 +358,35 @@ struct ofxNatNet::InternalThread : public ofThread
 
 			p = transform.preMult(p);
 			
-			markers[j] = p;
+            ref_markers[j] = p;
 		}
 		
 		return ptr;
 	}
 
-	char* unpackRigidBodies(char* ptr, vector<RigidBody>& rigidbodies)
+    char* unpackRigidBodies(char* ptr, vector<RigidBody>& ref_rigidbodies)
 	{
-		int major = NatNetVersion[0];
-		int minor = NatNetVersion[1];
+        int major = NatNetVersion[0];
+        int minor = NatNetVersion[1];
+        //it was --> int major = NatNetVersion[0];
+        //it was --> int minor = NatNetVersion[1];
 		
 		ofQuaternion rot = transform.getRotate();
 
-		int nRigidBodies = 0;
+		int32_t nRigidBodies = 0;
 		memcpy(&nRigidBodies, ptr, 4);
 		ptr += 4;
-		
-		rigidbodies.resize(nRigidBodies);
+
+        ref_rigidbodies.resize(nRigidBodies);
 		
 		for (int j = 0; j < nRigidBodies; j++)
 		{
-			ofxNatNet::RigidBody& RB = rigidbodies[j];
+            ofxNatNet::RigidBody& RB = ref_rigidbodies[j];
 			
 			ofVec3f pp;
 			ofQuaternion q;
 			
-			int ID = 0;
+			int32_t ID = 0;
 			memcpy(&ID, ptr, 4);
 			ptr += 4;
 			
@@ -401,40 +422,44 @@ struct ofxNatNet::InternalThread : public ofThread
 			RB.matrix = mat;
 			
 			// associated marker positions
-			int nRigidMarkers = 0;
-			memcpy(&nRigidMarkers, ptr, 4);
-			ptr += 4;
-			
-			int nBytes = nRigidMarkers * 3 * sizeof(float);
-			float* markerData = (float*)malloc(nBytes);
-			memcpy(markerData, ptr, nBytes);
-			ptr += nBytes;
-			
-			if (major >= 2)
-			{
-				// associated marker IDs
-				nBytes = nRigidMarkers * sizeof(int);
-				ptr += nBytes;
-				
-				// associated marker sizes
-				nBytes = nRigidMarkers * sizeof(float);
-				ptr += nBytes;
-			}
-			
-			RB.markers.resize(nRigidMarkers);
-			
-			for (int k = 0; k < nRigidMarkers; k++)
-			{
-				float x = markerData[k * 3];
-				float y = markerData[k * 3 + 1];
-				float z = markerData[k * 3 + 2];
-				
-				ofVec3f pp(x, y, z);
-				pp = transform.preMult(pp);
-				RB.markers[k] = pp;
-			}
-			
-			if (markerData) free(markerData);
+            // # RB Marker Data ( Before version 3.0.  After Version 3.0 Marker data is in description )
+            if (major < 3 && major != 0) {
+                int32_t nRigidMarkers = 0;
+                memcpy(&nRigidMarkers, ptr, 4);
+                ptr += 4;
+                
+                int32_t nBytes = nRigidMarkers * 3 * sizeof(float);
+                float* markerData = (float*)malloc(nBytes);
+                memcpy(markerData, ptr, nBytes);
+                ptr += nBytes;
+                
+                if (major >= 2)
+                {
+                    // associated marker IDs
+                    nBytes = nRigidMarkers * sizeof(int32_t);
+                    ptr += nBytes;
+                    
+                    // associated marker sizes
+                    nBytes = nRigidMarkers * sizeof(float);
+                    ptr += nBytes;
+                }
+                
+                RB.markers.resize(nRigidMarkers);
+                
+                for (int k = 0; k < nRigidMarkers; k++)
+                {
+                    float x = markerData[k * 3];
+                    float y = markerData[k * 3 + 1];
+                    float z = markerData[k * 3 + 2];
+                    
+                    ofVec3f pp(x, y, z);
+                    pp = transform.preMult(pp);
+                    RB.markers[k] = pp;
+                }
+                
+                if (markerData) free(markerData);
+            }
+
 			
 			if (major >= 2)
 			{
@@ -453,9 +478,8 @@ struct ofxNatNet::InternalThread : public ofThread
 			if (((major == 2) && (minor >= 6)) || (major > 2) || (major == 0))
 			{
 				// params
-				short params = 0; memcpy(&params, ptr, 2); ptr += 2;
+				int16_t params = 0; memcpy(&params, ptr, 2); ptr += 2;
 				bool bTrackingValid = params & 0x01; // 0x01 : rigid body was successfully tracked in this frame
-				RB._active = bTrackingValid;
 			}
 			
 		}  // next rigid body
@@ -465,16 +489,18 @@ struct ofxNatNet::InternalThread : public ofThread
 	
 	void Unpack(char* pData)
 	{
-		int major = NatNetVersion[0];
-		int minor = NatNetVersion[1];
+        int major = NatNetVersion[0];
+        int minor = NatNetVersion[1];
+        //it was --> int major = NatNetVersion[0];
+        //it was --> int minor = NatNetVersion[1];
 		
-		if (major == 0 && minor == 0)
+        if (major == 0 && minor == 0)
 		{
 			ofLogError("ofxNatNet") << "initialize failed";
 			return;
-		}
+        }
 		
-		if (major > impl_major || minor > impl_minor)
+		if (major > impl_major || (major == impl_major && minor > impl_minor))
 		{
 			ofLogError("ofxNatNet") << "The implemented NatNet parser is outdated";
 			return;
@@ -485,80 +511,81 @@ struct ofxNatNet::InternalThread : public ofThread
 		char* ptr = pData;
 
 		// message ID
-		int MessageID = 0;
+		int16_t MessageID = 0;
 		memcpy(&MessageID, ptr, 2);
 		ptr += 2;
 
 		// size
-		int nBytes = 0;
+		int16_t nBytes = 0;
 		memcpy(&nBytes, ptr, 2);
 		ptr += 2;
+//        cerr << MessageID << ":" << ofGetElapsedTimef() << endl;
 
-		if (MessageID == 7)  // FRAME OF MOCAP DATA packet
+		if (MessageID == NAT_FRAMEOFDATA)  // FRAME OF MOCAP DATA packet
 		{
-			int frame_number = 0;
+			int32_t frame_number = 0;
 			float latency = 0;
 
-			vector<vector<Marker> > markers_set;
-			vector<Skeleton> skeletons;
-			vector<Marker> markers;
-			vector<Marker> filterd_markers;
-			vector<RigidBody> rigidbodies;
+            vector<vector<Marker> > tmp_markers_set;
+            vector<Skeleton> tmp_skeletons;
+            vector<Marker> tmp_markers;
+            vector<Marker> tmp_filterd_markers;
+            vector<RigidBody> tmp_rigidbodies;
 
 			// frame number
 			memcpy(&frame_number, ptr, 4);
 			ptr += 4;
 
 			// number of data sets (markersets, rigidbodies, etc)
-			int nMarkerSets = 0;
+			int32_t nMarkerSets = 0;
 			memcpy(&nMarkerSets, ptr, 4);
 			ptr += 4;
 			
-			markers_set.resize(nMarkerSets);
+            tmp_markers_set.resize(nMarkerSets);
 			
 			for (int i = 0; i < nMarkerSets; i++)
-			{
+            {
 				// Markerset name
 				char szName[256];
 				strcpy(szName, ptr);
 				int nDataBytes = (int)strlen(szName) + 1;
 				ptr += nDataBytes;
 				
-				ptr = unpackMarkerSet(ptr, markers_set[i]);
+                ptr = unpackMarkerSet(ptr, tmp_markers_set[i]);
 			}
 
 			// unidentified markers
-			ptr = unpackMarkerSet(ptr, markers);
+            ptr = unpackMarkerSet(ptr, tmp_markers);
 
 			// rigid bodies
-			ptr = unpackRigidBodies(ptr, rigidbodies);
+            ptr = unpackRigidBodies(ptr, tmp_rigidbodies);
 
 			if (((major == 2) && (minor > 0)) || (major > 2)) {
-				int nSkeletons = 0;
+				int32_t nSkeletons = 0;
 				memcpy(&nSkeletons, ptr, 4);
 				ptr += 4;
 				
-				skeletons.resize(nSkeletons);
+                tmp_skeletons.resize(nSkeletons);
 
 				for (int j = 0; j < nSkeletons; j++) {
-					int skeletonID = 0;
+					int32_t skeletonID = 0;
 					memcpy(&skeletonID, ptr, 4);
 					ptr += 4;
 					
-					skeletons[j].id = skeletonID;
+                    tmp_skeletons[j].id = skeletonID;
 					
-					ptr = unpackRigidBodies(ptr, skeletons[j].joints);
+                    ptr = unpackRigidBodies(ptr, tmp_skeletons[j].joints);
 				}
 			}
 
 			// labeled markers (version 2.3 and later)
 			if (((major == 2) && (minor >= 3)) || (major > 2)) {
-				int nLabeledMarkers = 0;
+				int32_t nLabeledMarkers = 0;
 				memcpy(&nLabeledMarkers, ptr, 4);
 				ptr += 4;
 				for (int j = 0; j < nLabeledMarkers; j++) {
 					// id
-					int ID = 0;
+					int32_t ID = 0;
 					memcpy(&ID, ptr, 4);
 					ptr += 4;
 					// x
@@ -587,31 +614,39 @@ struct ofxNatNet::InternalThread : public ofThread
 						bool bPCSolved = params & 0x02;     // position provided by point cloud solve
 						bool bModelSolved = params & 0x04;  // position provided by model solve
 					}
+                    
+                    // Version 3.0 and later
+                    if (major >= 3 || major == 0) {
+                        float residual = 0.0f;
+                        memcpy(&residual, ptr, 4);
+                        ptr += 4;
+
+                    }
 
 					ofVec3f pp(x, y, z);
 					pp = transform.preMult(pp);
 
-					markers.push_back(pp);
+                    tmp_markers.push_back(pp);
 				}
 			}
 
 			// Force Plate data (version 2.9 and later)
 			if (((major == 2) && (minor >= 9)) || (major > 2))
 			{
-				int nForcePlates;
+				int32_t nForcePlates;
 				memcpy(&nForcePlates, ptr, 4); ptr += 4;
 				for (int iForcePlate = 0; iForcePlate < nForcePlates; iForcePlate++)
 				{
 					// ID
-					int ID = 0; memcpy(&ID, ptr, 4); ptr += 4;
+					int32_t ID = 0; memcpy(&ID, ptr, 4); ptr += 4;
 
 					// Channel Count
-					int nChannels = 0; memcpy(&nChannels, ptr, 4); ptr += 4;
+					int32_t nChannels = 0; memcpy(&nChannels, ptr, 4); ptr += 4;
 
 					// Channel Data
 					for (int i = 0; i < nChannels; i++)
 					{
-						int nFrames = 0; memcpy(&nFrames, ptr, 4); ptr += 4;
+						int32_t nFrames = 0; memcpy(&nFrames, ptr, 4); ptr += 4;
 						for (int j = 0; j < nFrames; j++)
 						{
 							float val = 0.0f;  memcpy(&val, ptr, 4); ptr += 4;
@@ -627,8 +662,8 @@ struct ofxNatNet::InternalThread : public ofThread
 			this->latency = latency;
 
 			// timecode
-			unsigned int timecode = 0; 	memcpy(&timecode, ptr, 4);	ptr += 4;
-			unsigned int timecodeSub = 0; memcpy(&timecodeSub, ptr, 4); ptr += 4;
+			uint32_t timecode = 0; 	memcpy(&timecode, ptr, 4);	ptr += 4;
+			uint32_t timecodeSub = 0; memcpy(&timecodeSub, ptr, 4); ptr += 4;
 
 			// timestamp
 			double timestamp = 0.0f;
@@ -649,18 +684,18 @@ struct ofxNatNet::InternalThread : public ofThread
 			bool bTrackedModelsChanged = params & 0x02;         // 0x02 Actively tracked model list has changed
 
 			// end of data tag
-			int eod = 0;
+			int32_t eod = 0;
 			memcpy(&eod, ptr, 4);
 			ptr += 4;
 
-			filterd_markers = markers;
+            tmp_filterd_markers = tmp_markers;
 
 			// filter markers
 			if (duplicated_point_removal_distance > 0)
 			{
 				map<int, ofxNatNet::RigidBody>::iterator it =
-					this->rigidbodies.begin();
-				while (it != this->rigidbodies.end())
+                    this->_rigidbodies.begin();
+                while (it != this->_rigidbodies.end())
 				{
 					ofxNatNet::RigidBody& RB = it->second;
 
@@ -668,9 +703,9 @@ struct ofxNatNet::InternalThread : public ofThread
 					{
 						ofVec3f& v = RB.markers[i];
 						vector<Marker>::iterator it = remove_if(
-							filterd_markers.begin(), filterd_markers.end(),
+                            tmp_filterd_markers.begin(), tmp_filterd_markers.end(),
 							remove_dups(v, duplicated_point_removal_distance));
-						filterd_markers.erase(it, filterd_markers.end());
+                        tmp_filterd_markers.erase(it, tmp_filterd_markers.end());
 					}
 
 					it++;
@@ -682,21 +717,23 @@ struct ofxNatNet::InternalThread : public ofThread
 			{
 				this->latency = latency;
 				this->frame_number = frame_number;
-				this->markers_set = markers_set;
-				this->markers = markers;
-				this->filterd_markers = filterd_markers;
-
-				{
-					for (int i = 0; i < rigidbodies.size(); i++) {
-						RigidBody &RB = rigidbodies[i];
-						RigidBody &tRB = this->rigidbodies[RB.id];
+                this->_markers_set = tmp_markers_set;
+                this->_markers = tmp_markers;
+                this->_filterd_markers = tmp_filterd_markers;
+                this->_rigidbodies_arr = tmp_rigidbodies;
+                this->_skeletons_arr = tmp_skeletons;
+                // fill the rigidbodies map
+                {
+                    for (int i = 0; i < tmp_rigidbodies.size(); i++) {
+                        RigidBody &RB = tmp_rigidbodies[i];
+                        RigidBody &tRB = this->_rigidbodies[RB.id];
 						tRB = RB;
 					}
 				}
 				{
-					for (int i = 0; i < skeletons.size(); i++) {
-						Skeleton &S = skeletons[i];
-						Skeleton &tS = this->skeletons[S.id];
+                    for (int i = 0; i < tmp_skeletons.size(); i++) {
+                        Skeleton &S = tmp_skeletons[i];
+                        Skeleton &tS = this->_skeletons[S.id];
 						tS = S;
 					}
 				}
@@ -704,13 +741,13 @@ struct ofxNatNet::InternalThread : public ofThread
 				unlock();
 			}
 		}
-		else if (MessageID == 5)  // Data Descriptions
+		else if (MessageID == NAT_MODELDEF)  // Data Descriptions
 		{
-            int nDatasets = 0;
+            int32_t nDatasets = 0;
 
-            vector<RigidBodyDescription> rigidbody_descs;
-            vector<SkeletonDescription> skeleton_descs;
-            vector<MarkerSetDescription> markerset_descs;
+            vector<RigidBodyDescription> tmp_rigidbody_descs;
+            vector<SkeletonDescription> tmp_skeleton_descs;
+            vector<MarkerSetDescription> tmp_markerset_descs;
 
 			// number of datasets
 			memcpy(&nDatasets, ptr, 4);
@@ -718,7 +755,7 @@ struct ofxNatNet::InternalThread : public ofThread
 
 			for (int i = 0; i < nDatasets; i++)
 			{
-				int type = 0;
+				int32_t type = 0;
 				memcpy(&type, ptr, 4);
 				ptr += 4;
 
@@ -734,7 +771,7 @@ struct ofxNatNet::InternalThread : public ofThread
                     description.name = szName;
 
 					// marker data
-					int nMarkers = 0;
+					int32_t nMarkers = 0;
 					memcpy(&nMarkers, ptr, 4);
 					ptr += 4;
 
@@ -746,7 +783,7 @@ struct ofxNatNet::InternalThread : public ofThread
 						ptr += nDataBytes;
                         description.marker_names.push_back(szName);
 					}
-                    markerset_descs.push_back(description);
+                    tmp_markerset_descs.push_back(description);
 				}
 				else if (type == 1)   // rigid body
 				{
@@ -761,12 +798,12 @@ struct ofxNatNet::InternalThread : public ofThread
                         description.name = szName;
 					}
 
-					int ID = 0;
+					int32_t ID = 0;
 					memcpy(&ID, ptr, 4);
 					ptr += 4;
                     description.id = ID;
 
-					int parentID = 0;
+					int32_t parentID = 0;
 					memcpy(&parentID, ptr, 4);
 					ptr += 4;
                     description.parent_id = parentID;
@@ -787,7 +824,31 @@ struct ofxNatNet::InternalThread : public ofThread
                     description.offset.y = yoffset;
                     description.offset.z = zoffset;
                     
-                    rigidbody_descs.push_back(description);
+                    // Version 3.0 and higher, rigid body marker information contained in description
+                    if (major >= 3 || major == 0) {
+                        int32_t nRigidMarkers = 0;
+                        memcpy(&nRigidMarkers, ptr, 4);
+                        ptr += 4;
+                        
+                        int32_t nBytes = nRigidMarkers * 3 * sizeof(float);
+                        float* markerData = (float*)malloc(nBytes);
+                        memcpy(markerData, ptr, nBytes);
+                        ptr += nBytes;
+
+                        int32_t nBytes_label = nRigidMarkers * sizeof(int32_t);
+                        ptr += nBytes_label;
+
+                        for (int k = 0; k < nRigidMarkers; k++)
+                        {
+                            float x = markerData[k * 3];
+                            float y = markerData[k * 3 + 1];
+                            float z = markerData[k * 3 + 2];
+                        }
+                        
+                        if (markerData) free(markerData);
+                    }
+                    
+                    tmp_rigidbody_descs.push_back(description);
 				}
 				else if (type == 2)   // skeleton
 				{
@@ -798,12 +859,12 @@ struct ofxNatNet::InternalThread : public ofThread
 					ptr += strlen(ptr) + 1;
                     description.name = szName;
 
-					int ID = 0;
+					int32_t ID = 0;
 					memcpy(&ID, ptr, 4);
 					ptr += 4;
                     description.id = ID;
 
-					int nRigidBodies = 0;
+					int32_t nRigidBodies = 0;
 					memcpy(&nRigidBodies, ptr, 4);
 					ptr += 4;
                     
@@ -820,12 +881,12 @@ struct ofxNatNet::InternalThread : public ofThread
                             description.joints[i].name = szName;
 						}
 
-						int ID = 0;
+						int32_t ID = 0;
 						memcpy(&ID, ptr, 4);
 						ptr += 4;
                         description.joints[i].id = ID;
 
-						int parentID = 0;
+						int32_t parentID = 0;
 						memcpy(&parentID, ptr, 4);
 						ptr += 4;
                         description.joints[i].parent_id = parentID;
@@ -846,7 +907,7 @@ struct ofxNatNet::InternalThread : public ofThread
                         description.joints[i].offset.y = yoffset;
                         description.joints[i].offset.z = zoffset;
 					}
-                    skeleton_descs.push_back(description);
+                    tmp_skeleton_descs.push_back(description);
 				}
 
 			}   // next dataset
@@ -854,9 +915,9 @@ struct ofxNatNet::InternalThread : public ofThread
             // copy to mainthread
             if (lock())
             {
-                this->markerset_descs = markerset_descs;
-                this->rigidbody_descs = rigidbody_descs;
-                this->skeleton_descs = skeleton_descs;
+                this->_markerset_descs = tmp_markerset_descs;
+                this->_rigidbody_descs = tmp_rigidbody_descs;
+                this->_skeleton_descs = tmp_skeleton_descs;
                 unlock();
             }
 		}
@@ -867,11 +928,11 @@ struct ofxNatNet::InternalThread : public ofThread
 	}
 };
 
-void ofxNatNet::setup(string interface_name, string target_host,
+void ofxNatNet::setup(string iface_name, string target_host,
 					  string multicast_group, int command_port, int data_port)
 {
 	dispose();
-	thread = new InternalThread(interface_name, target_host, multicast_group,
+	thread = new InternalThread(iface_name, target_host, multicast_group,
 								command_port, data_port);
 }
 
@@ -896,36 +957,26 @@ void ofxNatNet::update()
 		
 		if (isConnected())
 		{
-			markers_set = thread->markers_set;
-			markers = thread->markers;
-			filterd_markers = thread->filterd_markers;
+            markers_set = thread->_markers_set;
+            markers = thread->_markers;
+            filterd_markers = thread->_filterd_markers;
 			
 			{
-				rigidbodies = thread->rigidbodies;
+                rigidbodies = thread->_rigidbodies;
 				rigidbodies_arr.clear();
-				
-				map<int, RigidBody>::iterator it = thread->rigidbodies.begin();
-				while (it != thread->rigidbodies.end())
-				{
-					rigidbodies_arr.push_back(&it->second);
-					it++;
-				}
+                rigidbodies_arr = thread->_rigidbodies_arr;
+
 			}
 			{
-				skeletons = thread->skeletons;
+                skeletons = thread->_skeletons;
 				skeletons_arr.clear();
-				
-				map<int, Skeleton>::iterator it = thread->skeletons.begin();
-				while (it != thread->skeletons.end())
-				{
-					skeletons_arr.push_back(&it->second);
-					it++;
-				}
+                skeletons_arr = thread->_skeletons_arr;
+                
 			}
             
-            markerset_descs = thread->markerset_descs;
-            rigidbody_descs = thread->rigidbody_descs;
-            skeleton_descs = thread->skeleton_descs;
+            markerset_descs = thread->_markerset_descs;
+            rigidbody_descs = thread->_rigidbody_descs;
+            skeleton_descs = thread->_skeleton_descs;
 		}
 		else
 		{
@@ -1120,3 +1171,48 @@ void ofxNatNet::debugDraw()
 	debugDrawInformation();
 }
 
+map<string, Poco::Net::IPAddress> ofxNatNet::getNetworkInterfaces()
+{
+    map<string, Poco::Net::IPAddress> ret;
+
+    Poco::Net::NetworkInterface::Map m = Poco::Net::NetworkInterface::map(true, true);
+    assert (!m.empty());
+    for (Poco::Net::NetworkInterface::Map::const_iterator it = m.begin(); it != m.end(); ++it)
+    {
+        std::cout << std::endl << "=============" << std::endl;
+
+        std::cout << "Index:       " << it->second.index() << std::endl;
+        std::cout << "Name:        " << it->second.name() << std::endl;
+        std::cout << "DisplayName: " << it->second.displayName() << std::endl;
+        std::cout << "Status:      " << (it->second.isUp() ? "Up" : "Down") << std::endl;
+
+        Poco::Net::NetworkInterface::MACAddress mac(it->second.macAddress());
+        if (!mac.empty() && (it->second.type() != Poco::Net::NetworkInterface::NI_TYPE_SOFTWARE_LOOPBACK))
+                std::cout << "MAC Address: (" << it->second.type() << ") " << mac << std::endl;
+
+        typedef Poco::Net::NetworkInterface::AddressList List;
+
+        const List& ipList = it->second.addressList();
+        List::const_iterator ipIt = ipList.begin();
+        List::const_iterator ipEnd = ipList.end();
+        for (int counter = 0; ipIt != ipEnd; ++ipIt, ++counter)
+        {
+            int fam = ipIt->get<Poco::Net::NetworkInterface::IP_ADDRESS>().family();
+
+            std::cout << std::endl << "----------" << std::endl;
+            std::cout << "Address " << counter << std::endl;
+            std::cout << "----------" << std::endl;
+            std::cout << "Family:     " << fam << std::endl;
+            std::cout << "Address:     " << ipIt->get<Poco::Net::NetworkInterface::IP_ADDRESS>() << std::endl;
+            Poco::Net::IPAddress addr = ipIt->get<Poco::Net::NetworkInterface::SUBNET_MASK>();
+            if (!addr.isWildcard()) std::cout << "Subnet:      " << addr << " (/" << addr.prefixLength() << ")" << ")" << std::endl;
+                    addr = ipIt->get<Poco::Net::NetworkInterface::BROADCAST_ADDRESS>();
+            if (!addr.isWildcard()) std::cout << "Broadcast:   " << addr << std::endl;
+            if (fam == Poco::Net::AddressFamily::IPv4)
+            {
+                ret[it->second.name()] = ipIt->get<Poco::Net::NetworkInterface::IP_ADDRESS>();
+            }
+        }
+    }
+    return ret;
+}

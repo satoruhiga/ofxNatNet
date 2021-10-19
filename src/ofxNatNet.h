@@ -1,6 +1,11 @@
 #pragma once
 
 #include "ofMain.h"
+#include <Poco/Net/SocketAddress.h>
+#include <Poco/Net/DatagramSocket.h>
+#include <Poco/Net/MulticastSocket.h>
+#include <Poco/Net/NetworkInterface.h>
+#include <Poco/Net/NetException.h>
 
 class ofxNatNet
 {
@@ -72,7 +77,7 @@ public:
 	}
 	~ofxNatNet() { dispose(); }
 
-	void setup(string interface_name, string target_host,
+	void setup(string iface_name, string target_host,
 			   string multicast_group = "239.255.42.99",
 			   int command_port = 1510, int data_port = 1511);
 	void update();
@@ -107,16 +112,34 @@ public:
 		return filterd_markers[index];
 	}
 
-	inline const size_t getNumRigidBody() { return rigidbodies.size(); }
-	inline const RigidBody& getRigidBodyAt(int index)
+    /*
+     * Returns the amount of rigidbody descriptions which are received by sendRequestDescription()
+    */
+    inline const size_t getNumRigidBodyDescriptions() { return rigidbody_descs.size(); }
+    /*
+     * Returns the amount of rigidbodies received through the data stream
+     */
+    inline const size_t getNumRigidBody() { return rigidbodies_arr.size(); }
+
+    /*
+     * Return the rigidbody at the index in the rigidbody vector
+     */
+    inline const RigidBody& getRigidBodyAt(int index)
 	{
-		return *rigidbodies_arr[index];
+        return rigidbodies_arr[index];
 	}
 
+    /*
+     * Returns true if a rigidbody with given id is available
+     */
 	inline const bool hasRigidBody(int id)
 	{
 		return rigidbodies.find(id) != rigidbodies.end();
 	}
+    /*
+     * Sets the rigidbody RB to the rigidbody with the given id
+     * returns false if the rigidbody is not available
+     */
 	inline const bool getRigidBody(int id, RigidBody& RB)
 	{
 		if (!hasRigidBody(id)) return false;
@@ -124,10 +147,10 @@ public:
 		return true;
 	}
 	
-	inline const size_t getNumSkeleton() { return skeletons.size(); }
+	inline const size_t getNumSkeleton() { return skeletons_arr.size(); }
 	inline const Skeleton& getSkeletonAt(int index)
 	{
-		return *skeletons_arr[index];
+		return skeletons_arr[index];
 	}
 	
 	inline const bool hasSkeleton(int id)
@@ -156,6 +179,7 @@ public:
 	inline const vector<RigidBodyDescription> getRigidBodyDescriptions() { return rigidbody_descs; }
 	inline const vector<SkeletonDescription> getSkeletonDescriptions() { return skeleton_descs; }
     
+    static map<string, Poco::Net::IPAddress> getNetworkInterfaces();
 protected:
 	InternalThread* thread;
 
@@ -168,10 +192,10 @@ protected:
 	vector<Marker> markers;
 
 	map<int, RigidBody> rigidbodies;
-	vector<RigidBody*> rigidbodies_arr;
+    vector<RigidBody> rigidbodies_arr;
 	
 	map<int, Skeleton> skeletons;
-	vector<Skeleton*> skeletons_arr;
+	vector<Skeleton> skeletons_arr;
 
 	vector<RigidBodyDescription> rigidbody_descs;
 	vector<SkeletonDescription> skeleton_descs;

@@ -11,7 +11,7 @@ void testApp::setup() {
 	ofSetVerticalSync(true);
 	ofBackground(0);
 
-	string interface_name = "192.168.0.1"; // local network device ip address
+	string interface_name = "192.168.0.72"; // local network device ip address
 	// interface_name = "en0"; // or network interface name
 	
 	natnet.setup(interface_name, "192.168.0.1");  // interface name, server ip
