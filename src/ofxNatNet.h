@@ -25,6 +25,7 @@ public:
 		vector<Marker> markers;
 
 		float mean_marker_error;
+        string name;
 
 		inline bool isActive() const { return _active; }
 		OF_DEPRECATED_MSG("Use isActive insted.", bool active() const);
@@ -146,6 +147,24 @@ public:
 		RB = rigidbodies[id];
 		return true;
 	}
+    
+    /*
+     * Returns true if a rigidbody with given id is available
+     */
+    inline const bool hasRigidBodyByName(string name)
+    {
+        return name_to_stream_id.find(name) != name_to_stream_id.end() && rigidbodies.find(name_to_stream_id.at(name)) != rigidbodies.end();
+    }
+    /*
+     * Sets the rigidbody RB to the rigidbody with the given id
+     * returns false if the rigidbody is not available
+     */
+    inline const bool getRigidBodyByName(string name, RigidBody& RB)
+    {
+        if (!hasRigidBodyByName(name)) return false;
+        RB = rigidbodies[name_to_stream_id.at(name)];
+        return true;
+    }
 	
 	inline const size_t getNumSkeleton() { return skeletons_arr.size(); }
 	inline const Skeleton& getSkeletonAt(int index)
@@ -201,6 +220,9 @@ protected:
 	vector<SkeletonDescription> skeleton_descs;
 	vector<MarkerSetDescription> markerset_descs;
     
+    map<string, int> name_to_stream_id;
+    map<int, string> stream_id_to_name;
+
 	void dispose();
 
 private:

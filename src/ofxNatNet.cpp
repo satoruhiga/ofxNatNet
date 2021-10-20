@@ -89,6 +89,9 @@ struct ofxNatNet::InternalThread : public ofThread
     vector<SkeletonDescription> _skeleton_descs;
     vector<MarkerSetDescription> _markerset_descs;
     
+    map<string, int> _name_to_stream_id;
+
+    
 	float last_packet_arrival_time;
 	float data_rate;
 
@@ -527,10 +530,25 @@ struct ofxNatNet::InternalThread : public ofThread
 			float latency = 0;
 
             vector<vector<Marker> > tmp_markers_set;
+            map<int, vector<Marker> > tmp_markers_set_map;
             vector<Skeleton> tmp_skeletons;
             vector<Marker> tmp_markers;
             vector<Marker> tmp_filterd_markers;
             vector<RigidBody> tmp_rigidbodies;
+            
+            // for version 3.0 or higher, convert asset markers to rigid body markers by name to stream id table.
+            map<string, int> tmp_name_to_stream_id;
+            map<int, string> tmp_stream_id_to_name;
+            if (major >= 3 || major == 0) {
+                if (lock())
+                {
+                    tmp_name_to_stream_id = this->_name_to_stream_id;
+                    for (auto& t : tmp_name_to_stream_id) {
+                        tmp_stream_id_to_name[t.second] = t.first;
+                    }
+                    unlock();
+                }
+            }
 
 			// frame number
 			memcpy(&frame_number, ptr, 4);
@@ -552,6 +570,11 @@ struct ofxNatNet::InternalThread : public ofThread
 				ptr += nDataBytes;
 				
                 ptr = unpackMarkerSet(ptr, tmp_markers_set[i]);
+                
+                string name = szName;
+                if (tmp_name_to_stream_id.find(name) != tmp_name_to_stream_id.end()) {
+                    tmp_markers_set_map[tmp_name_to_stream_id[name]] = tmp_markers_set[i];
+                }
 			}
 
 			// unidentified markers
@@ -559,6 +582,15 @@ struct ofxNatNet::InternalThread : public ofThread
 
 			// rigid bodies
             ptr = unpackRigidBodies(ptr, tmp_rigidbodies);
+            
+            if (major >= 3 || major == 0) {
+                for (auto& rigidbody : tmp_rigidbodies) {
+                    if (tmp_markers_set_map.find(rigidbody.id) != tmp_markers_set_map.end()) {
+                        rigidbody.markers = tmp_markers_set_map.at(rigidbody.id);
+                        rigidbody.name = tmp_stream_id_to_name[rigidbody.id];
+                    }
+                }
+            }
 
 			if (((major == 2) && (minor > 0)) || (major > 2)) {
 				int32_t nSkeletons = 0;
@@ -748,6 +780,8 @@ struct ofxNatNet::InternalThread : public ofThread
             vector<RigidBodyDescription> tmp_rigidbody_descs;
             vector<SkeletonDescription> tmp_skeleton_descs;
             vector<MarkerSetDescription> tmp_markerset_descs;
+            map<string, int> tmp_name_to_stream_id;
+
 
 			// number of datasets
 			memcpy(&nDatasets, ptr, 4);
@@ -802,6 +836,8 @@ struct ofxNatNet::InternalThread : public ofThread
 					memcpy(&ID, ptr, 4);
 					ptr += 4;
                     description.id = ID;
+                    
+                    tmp_name_to_stream_id[description.name] = description.id;
 
 					int32_t parentID = 0;
 					memcpy(&parentID, ptr, 4);
@@ -918,6 +954,7 @@ struct ofxNatNet::InternalThread : public ofThread
                 this->_markerset_descs = tmp_markerset_descs;
                 this->_rigidbody_descs = tmp_rigidbody_descs;
                 this->_skeleton_descs = tmp_skeleton_descs;
+                this->_name_to_stream_id = tmp_name_to_stream_id;
                 unlock();
             }
 		}
@@ -977,6 +1014,11 @@ void ofxNatNet::update()
             markerset_descs = thread->_markerset_descs;
             rigidbody_descs = thread->_rigidbody_descs;
             skeleton_descs = thread->_skeleton_descs;
+            name_to_stream_id = thread->_name_to_stream_id;
+            stream_id_to_name.clear();
+            for (auto& p : name_to_stream_id) {
+                stream_id_to_name[p.second] = p.first;
+            }
 		}
 		else
 		{

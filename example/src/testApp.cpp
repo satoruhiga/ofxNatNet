@@ -66,6 +66,7 @@ void testApp::draw() {
 		ofPushMatrix();
 		glMultMatrixf(RB.getMatrix().getPtr());
 		ofDrawAxis(30);
+        ofDrawBitmapString(ofToString(RB.id) + ":" + RB.name, 0, 10);
 		ofPopMatrix();
 
 		glBegin(GL_LINE_LOOP);
