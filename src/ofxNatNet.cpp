@@ -1237,6 +1237,7 @@ map<string, Poco::Net::IPAddress> ofxNatNet::getNetworkInterfaces()
         const List& ipList = it->second.addressList();
         List::const_iterator ipIt = ipList.begin();
         List::const_iterator ipEnd = ipList.end();
+#if OF_VERSION_MINOR >= 10
         for (int counter = 0; ipIt != ipEnd; ++ipIt, ++counter)
         {
             int fam = ipIt->get<Poco::Net::NetworkInterface::IP_ADDRESS>().family();
@@ -1255,6 +1256,7 @@ map<string, Poco::Net::IPAddress> ofxNatNet::getNetworkInterfaces()
                 ret[it->second.name()] = ipIt->get<Poco::Net::NetworkInterface::IP_ADDRESS>();
             }
         }
+#endif
     }
     return ret;
 }
