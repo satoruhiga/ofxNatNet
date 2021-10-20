@@ -16,3 +16,4 @@ Support NatNet SDK up to 3.1. (WIP)
 
 ## Tested Environment
 - oF 0.11.2 macos
+- oF 0.11.2 Windows 10
