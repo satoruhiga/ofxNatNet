@@ -9,6 +9,7 @@
 
 class ofxNatNet
 {
+protected:
 	struct InternalThread;
 	friend struct InternalThread;
 
