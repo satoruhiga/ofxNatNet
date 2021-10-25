@@ -47,6 +47,9 @@
     <ClInclude Include="..\..\..\addons\ofxPoco\src\ofxXmlPoco.h">
       <Filter>addons\ofxPoco\src</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\ofxNatNetImpl.h">
+      <Filter>addons\ofxNatNet\src</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="icon.rc" />

@@ -194,6 +194,7 @@
     <ClCompile Include="..\..\..\addons\ofxPoco\src\ofxXmlPoco.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\src\ofxNatNetImpl.h" />
     <ClInclude Include="src\testApp.h" />
     <ClInclude Include="..\..\..\addons\ofxNatNet\src\ofxNatNet.h" />
     <ClInclude Include="..\..\..\addons\ofxPoco\src\ofxXmlPoco.h" />
