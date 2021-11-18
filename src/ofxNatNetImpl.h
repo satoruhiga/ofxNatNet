@@ -137,3 +137,4 @@ struct ofxNatNet::InternalThread : public ofThread
 
 	void Unpack(char* pData);
 };
+#pragma pack(pop)
