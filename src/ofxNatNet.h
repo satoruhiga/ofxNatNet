@@ -1,9 +1,15 @@
 #pragma once
 
 #include "ofMain.h"
+#include <Poco/Net/SocketAddress.h>
+#include <Poco/Net/DatagramSocket.h>
+#include <Poco/Net/MulticastSocket.h>
+#include <Poco/Net/NetworkInterface.h>
+#include <Poco/Net/NetException.h>
 
 class ofxNatNet
 {
+protected:
 	struct InternalThread;
 	friend struct InternalThread;
 
@@ -20,6 +26,7 @@ public:
 		vector<Marker> markers;
 
 		float mean_marker_error;
+        string name;
 
 		inline bool isActive() const { return _active; }
 		OF_DEPRECATED_MSG("Use isActive insted.", bool active() const);
@@ -72,77 +79,113 @@ public:
 	}
 	~ofxNatNet() { dispose(); }
 
-	void setup(string interface_name, string target_host,
+	void setup(string iface_name, string target_host,
 			   string multicast_group = "239.255.42.99",
-			   int command_port = 1510, int data_port = 1511);
+			   int command_port = 1510, int data_port = 1511, InternalThread* thread_ptr = nullptr);
 	void update();
 
 	void sendPing();
     void sendRequestDescription();
 
-	bool isConnected();
-	int getFrameNumber() { return frame_number; }
-	float getLatency() { return latency; }
+	bool isConnected() const;
+	int getFrameNumber() const { return frame_number; }
+	float getLatency() const { return latency; }
 
-	float getDataRate();
-	float getLastPacketArraivalTime();
+	float getDataRate() const;
+	float getLastPacketArraivalTime() const;
 
 	void setScale(float v);
-	ofVec3f getScale();
+	ofVec3f getScale() const;
 
 	void setTransform(const ofMatrix4x4& m);
-	const ofMatrix4x4& getTransform();
+	const ofMatrix4x4& getTransform() const;
 
 	void setDuplicatedPointRemovalDistance(float v);
 
-	inline const size_t getNumMarkersSet() { return markers_set.size(); }
-	inline const vector<Marker>& getMarkersSetAt(size_t index) { return markers_set[index]; }
+	inline const size_t getNumMarkersSet() const { return markers_set.size(); }
+	inline const vector<Marker>& getMarkersSetAt(size_t index) const { return markers_set[index]; }
 	
-	inline const size_t getNumMarker() { return markers.size(); }
-	inline const Marker& getMarker(size_t index) { return markers[index]; }
+	inline const size_t getNumMarker() const { return markers.size(); }
+	inline const Marker& getMarker(size_t index) const { return markers[index]; }
 
-	inline const size_t getNumFilterdMarker() { return filterd_markers.size(); }
-	inline const Marker& getFilterdMarker(size_t index)
+	inline const size_t getNumFilterdMarker() const { return filterd_markers.size(); }
+	inline const Marker& getFilterdMarker(size_t index) const
 	{
 		return filterd_markers[index];
 	}
 
-	inline const size_t getNumRigidBody() { return rigidbodies.size(); }
-	inline const RigidBody& getRigidBodyAt(int index)
+    /*
+     * Returns the amount of rigidbody descriptions which are received by sendRequestDescription()
+    */
+    inline const size_t getNumRigidBodyDescriptions() const { return rigidbody_descs.size(); }
+    /*
+     * Returns the amount of rigidbodies received through the data stream
+     */
+    inline const size_t getNumRigidBody() const { return rigidbodies_arr.size(); }
+
+    /*
+     * Return the rigidbody at the index in the rigidbody vector
+     */
+    inline const RigidBody& getRigidBodyAt(int index) const
 	{
-		return *rigidbodies_arr[index];
+        return rigidbodies_arr[index];
 	}
 
-	inline const bool hasRigidBody(int id)
+    /*
+     * Returns true if a rigidbody with given id is available
+     */
+	inline const bool hasRigidBody(int id) const
 	{
 		return rigidbodies.find(id) != rigidbodies.end();
 	}
-	inline const bool getRigidBody(int id, RigidBody& RB)
+    /*
+     * Sets the rigidbody RB to the rigidbody with the given id
+     * returns false if the rigidbody is not available
+     */
+	inline const bool getRigidBody(int id, RigidBody& RB) const
 	{
 		if (!hasRigidBody(id)) return false;
-		RB = rigidbodies[id];
+		RB = rigidbodies.at(id);
 		return true;
 	}
+    
+    /*
+     * Returns true if a rigidbody with given id is available
+     */
+    inline const bool hasRigidBodyByName(string name) const
+    {
+        return name_to_stream_id.find(name) != name_to_stream_id.end() && rigidbodies.find(name_to_stream_id.at(name)) != rigidbodies.end();
+    }
+    /*
+     * Sets the rigidbody RB to the rigidbody with the given id
+     * returns false if the rigidbody is not available
+     */
+    inline const bool getRigidBodyByName(string name, RigidBody& RB) const
+    {
+        if (!hasRigidBodyByName(name)) return false;
+        RB = rigidbodies.at(name_to_stream_id.at(name));
+        return true;
+    }
 	
-	inline const size_t getNumSkeleton() { return skeletons.size(); }
-	inline const Skeleton& getSkeletonAt(int index)
+	inline const size_t getNumSkeleton() const { return skeletons_arr.size(); }
+	inline const Skeleton& getSkeletonAt(int index) const
 	{
-		return *skeletons_arr[index];
+		return skeletons_arr[index];
 	}
 	
-	inline const bool hasSkeleton(int id)
+	inline const bool hasSkeleton(int id) const
 	{
 		return skeletons.find(id) != skeletons.end();
 	}
-	inline const bool getSkeleton(int id, Skeleton& S)
+	inline const bool getSkeleton(int id, Skeleton& S) const
 	{
 		if (!hasSkeleton(id)) return false;
-		S = skeletons[id];
+		S = skeletons.at(id);
 		return true;
 	}
 
 	void setBufferTime(float sec);
-	float getBufferTime();
+	float getBufferTime() const;
 	
 	void setTimeout(float timeout);
 
@@ -152,10 +195,11 @@ public:
 	void debugDrawInformation();
 	void debugDrawMarkers();
     
-	inline const vector<MarkerSetDescription> getMarkerSetDescriptions() { return markerset_descs; }
-	inline const vector<RigidBodyDescription> getRigidBodyDescriptions() { return rigidbody_descs; }
-	inline const vector<SkeletonDescription> getSkeletonDescriptions() { return skeleton_descs; }
+	inline const vector<MarkerSetDescription> getMarkerSetDescriptions() const { return markerset_descs; }
+	inline const vector<RigidBodyDescription> getRigidBodyDescriptions() const { return rigidbody_descs; }
+	inline const vector<SkeletonDescription> getSkeletonDescriptions() const { return skeleton_descs; }
     
+    static map<string, Poco::Net::IPAddress> getNetworkInterfaces();
 protected:
 	InternalThread* thread;
 
@@ -168,15 +212,18 @@ protected:
 	vector<Marker> markers;
 
 	map<int, RigidBody> rigidbodies;
-	vector<RigidBody*> rigidbodies_arr;
+    vector<RigidBody> rigidbodies_arr;
 	
 	map<int, Skeleton> skeletons;
-	vector<Skeleton*> skeletons_arr;
+	vector<Skeleton> skeletons_arr;
 
 	vector<RigidBodyDescription> rigidbody_descs;
 	vector<SkeletonDescription> skeleton_descs;
 	vector<MarkerSetDescription> markerset_descs;
     
+    map<string, int> name_to_stream_id;
+    map<int, string> stream_id_to_name;
+
 	void dispose();
 
 private:

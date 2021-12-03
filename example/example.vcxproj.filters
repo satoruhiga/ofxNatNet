@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -12,6 +12,9 @@
     </ClCompile>
     <ClCompile Include="..\..\..\addons\ofxNatNet\src\ofxNatNet.cpp">
       <Filter>addons\ofxNatNet\src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\addons\ofxPoco\src\ofxXmlPoco.cpp">
+      <Filter>addons\ofxPoco\src</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -27,12 +30,24 @@
     <Filter Include="addons\ofxNatNet\src">
       <UniqueIdentifier>{A9CBA76B-4224-12CE-2F09-3FA6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="addons\ofxPoco">
+      <UniqueIdentifier>{3256AE3E-9B29-EA27-C842-CE6B}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="addons\ofxPoco\src">
+      <UniqueIdentifier>{C7D4269D-D8A9-A7BB-531B-98DA}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\testApp.h">
       <Filter>src</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\addons\ofxNatNet\src\ofxNatNet.h">
+      <Filter>addons\ofxNatNet\src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\addons\ofxPoco\src\ofxXmlPoco.h">
+      <Filter>addons\ofxPoco\src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\ofxNatNetImpl.h">
       <Filter>addons\ofxNatNet\src</Filter>
     </ClInclude>
   </ItemGroup>
